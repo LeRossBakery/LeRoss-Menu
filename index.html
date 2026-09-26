@@ -80,6 +80,19 @@
 
     const formatRD = (val) => "RD$ " + Number(val || 0).toLocaleString("es-DO", { minimumFractionDigits: 0 });
 
+    // Máscara RD automática en la web de pedidos
+    const formatPhoneInput = (val) => {
+      if (!val) return "";
+      let digits = String(val).replace(/\D/g, "");
+      if (digits.startsWith("1") && digits.length > 10) {
+        digits = digits.slice(1);
+      }
+      digits = digits.slice(0, 10);
+      if (digits.length <= 3) return digits;
+      if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+      return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+    };
+
     function CustomerApp() {
       const [business, setBusiness] = useState({
         name: "LeRoss Bakery",
@@ -185,11 +198,13 @@
           lineTotal: item.total
         }));
 
+        const cleanCustomerPhone = formatPhoneInput(customerData.phone);
+
         const newOrderRecord = {
           id: "web_" + Date.now(),
           orderNumber: orderCode,
           customerName: customerData.name.trim(),
-          customerPhone: customerData.phone.trim(),
+          customerPhone: cleanCustomerPhone,
           date: new Date().toISOString().split("T")[0],
           deliveryDate: customerData.deliveryDate,
           notes: customerData.notes || "",
@@ -225,7 +240,7 @@
         const itemsList = cartItems.map(i => `• ${i.quantity}x ${i.name} — ${formatRD(i.total)}`).join("\n");
         const waMsg = `🧁 *Solicitud de Pedido #${orderCode}*\n\n` +
           `*Cliente:* ${customerData.name.trim()}\n` +
-          `*WhatsApp:* ${customerData.phone.trim()}\n` +
+          `*WhatsApp:* ${cleanCustomerPhone}\n` +
           `*Fecha solicitada:* ${customerData.deliveryDate}\n` +
           (customerData.notes ? `*Detalles:* ${customerData.notes}\n\n` : '\n') +
           `*Orden solicitada:*\n${itemsList}\n\n` +
@@ -346,7 +361,7 @@
             )}
           </header>
 
-          {/* Headline Locked to Single Line */}
+          {/* Titular en una sola línea */}
           <div className="pt-8 pb-6">
             <p className="text-xs uppercase tracking-widest text-apple-subtext font-medium mb-1.5">Repostería Artesanal</p>
             <h2 
@@ -363,7 +378,7 @@
             </div>
           </div>
 
-          {/* Dessert List */}
+          {/* Menú de Postres */}
           <main className="divide-y divide-apple-border/50">
             {products.map(prod => {
               const qty = cart[prod.id] || 0;
@@ -534,14 +549,15 @@
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-apple-subtext block mb-1 font-medium">WhatsApp</label>
+                      <label className="text-xs text-apple-subtext block mb-1 font-medium">WhatsApp (Auto-formato)</label>
                       <input 
                         required
                         type="tel" 
-                        placeholder="829-000-0000" 
+                        maxLength="12"
+                        placeholder="809-000-0000" 
                         value={customerData.phone}
-                        onChange={e => setCustomerData({ ...customerData, phone: e.target.value })}
-                        className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-2.5 text-sm text-apple-text outline-none focus:border-apple-text transition-colors"
+                        onChange={e => setCustomerData({ ...customerData, phone: formatPhoneInput(e.target.value) })}
+                        className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-2.5 text-sm text-apple-text outline-none focus:border-apple-text transition-colors font-medium"
                       />
                     </div>
                     <div>
