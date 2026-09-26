@@ -27,7 +27,8 @@
               border: '#E5E5EA',
               text: '#1D1D1F',
               subtext: '#86868B',
-              pink: '#E5839B'
+              pink: '#E5839B',
+              softPink: '#FFF0F4'
             }
           }
         }
@@ -67,12 +68,10 @@
       background-color: #FFFFFF;
       color: #1D1D1F;
     }
-    input, textarea {
-      font-size: 16px !important;
-    }
+    input, textarea { font-size: 16px !important; }
   </style>
 </head>
-<body class="selection:bg-apple-pink/20">
+<body>
   <div id="root"></div>
 
   <script type="text/babel">
@@ -98,6 +97,13 @@
       const [cart, setCart] = useState({});
       const [showCheckout, setShowCheckout] = useState(false);
       const [isSending, setIsSending] = useState(false);
+      const [confirmedOrder, setConfirmedOrder] = useState(null);
+
+      // Mínimo de 36 horas hacia adelante (bloqueo automático de fechas no viables)
+      const minDateAllowed = useMemo(() => {
+        const d = new Date(Date.now() + 36 * 60 * 60 * 1000);
+        return d.toISOString().split("T")[0];
+      }, []);
 
       const [customerData, setCustomerData] = useState({
         name: "",
@@ -106,6 +112,7 @@
         notes: ""
       });
 
+      // Sincronización en vivo con Firestore
       useEffect(() => {
         if (!db) return;
         const unsubscribe = db.collection("leross_app").doc("main_data").onSnapshot(
@@ -116,7 +123,7 @@
               if (data.products && data.products.length > 0) setProducts(data.products);
             }
           },
-          (err) => console.error("Error sincronizando catálogo:", err)
+          (err) => console.error("Error catálogo:", err)
         );
         return () => unsubscribe();
       }, []);
@@ -146,18 +153,27 @@
         return cartItems.reduce((acc, item) => acc + item.total, 0);
       }, [cartItems]);
 
+      const depositAmount = useMemo(() => Math.round(cartTotal * 0.5), [cartTotal]);
+      const remainingAmount = useMemo(() => cartTotal - depositAmount, [cartTotal, depositAmount]);
+
       const totalItemCount = useMemo(() => {
         return Object.values(cart).reduce((acc, qty) => acc + qty, 0);
       }, [cart]);
 
+      // Enviar Pedido
       const handlePlaceOrder = async (e) => {
         e.preventDefault();
         if (!customerData.name.trim() || !customerData.phone.trim()) {
           alert("Por favor indica tu nombre y WhatsApp.");
           return;
         }
+        if (!customerData.deliveryDate) {
+          alert("Por favor selecciona una fecha de entrega.");
+          return;
+        }
 
         setIsSending(true);
+        const orderCode = "LR-" + Math.floor(1000 + Math.random() * 9000);
 
         const draftItems = cartItems.map((item, idx) => ({
           id: Date.now() + idx,
@@ -172,19 +188,23 @@
           lineTotal: item.total
         }));
 
-        const newDraftRecord = {
-          id: "draft_web_" + Date.now(),
+        const newOrderRecord = {
+          id: "web_" + Date.now(),
+          orderNumber: orderCode,
           customerName: customerData.name.trim(),
           customerPhone: customerData.phone.trim(),
           date: new Date().toISOString().split("T")[0],
-          deliveryDate: customerData.deliveryDate || "",
+          deliveryDate: customerData.deliveryDate,
           notes: customerData.notes || "",
           items: draftItems,
           orderDiscountType: "amount",
           orderDiscountVal: 0,
           paymentStatus: "Pendiente",
-          paymentMethod: "Transferencia",
+          paymentMethod: "Transferencia (50% anticipo)",
+          approvalStatus: "Pendiente", // Pendiente, Aceptada, Rechazada
+          rejectionReason: "",
           state: "Borrador",
+          depositRequired: depositAmount,
           calculation: {
             lines: draftItems,
             subtotal: cartTotal,
@@ -193,43 +213,133 @@
             itbis: 0,
             total: cartTotal
           },
-          updatedAt: new Date().toISOString()
+          createdAt: new Date().toISOString()
         };
 
         try {
           if (db) {
             await db.collection("leross_app").doc("main_data").update({
-              drafts: firebase.firestore.FieldValue.arrayUnion(newDraftRecord)
+              drafts: firebase.firestore.FieldValue.arrayUnion(newOrderRecord)
             });
           }
         } catch (err) {
           console.error("Error guardando orden:", err);
         }
 
+        // Formato de WhatsApp
         const itemsList = cartItems.map(i => `• ${i.quantity}x ${i.name} — ${formatRD(i.total)}`).join("\n");
-        const waMsg = `🧁 *Nuevo Pedido — LeRoss Bakery*\n\n` +
+        const waMsg = `🧁 *Solicitud de Pedido #${orderCode}*\n\n` +
           `*Cliente:* ${customerData.name.trim()}\n` +
           `*WhatsApp:* ${customerData.phone.trim()}\n` +
-          (customerData.deliveryDate ? `*Fecha deseada:* ${customerData.deliveryDate}\n` : '') +
+          `*Fecha requerida:* ${customerData.deliveryDate}\n` +
           (customerData.notes ? `*Detalles:* ${customerData.notes}\n\n` : '\n') +
-          `*Orden:*\n${itemsList}\n\n` +
-          `*Total Estimado: ${formatRD(cartTotal)}*\n\n` +
-          `¿Me confirman disponibilidad para coordinar el pago?`;
+          `*Orden solicitada:*\n${itemsList}\n\n` +
+          `*Total Estimado:* ${formatRD(cartTotal)}\n` +
+          `*Anticipo para reservar (50%):* ${formatRD(depositAmount)}\n` +
+          `*Restante contra entrega:* ${formatRD(remainingAmount)}\n\n` +
+          `¿Me confirman disponibilidad para reservar el cupo?`;
 
         const cleanDestPhone = (business.phone || "849-441-1315").replace(/\D/g, "");
         const targetPhone = cleanDestPhone.length === 10 ? "1" + cleanDestPhone : cleanDestPhone;
         const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(waMsg)}`;
 
+        setConfirmedOrder({
+          ...newOrderRecord,
+          itemsListText: itemsList,
+          waUrl
+        });
+
         setIsSending(false);
         setShowCheckout(false);
         setCart({});
+
+        // Abre WhatsApp en una pestaña
         window.open(waUrl, "_blank");
       };
 
+      // VISTA DE CONFIRMACIÓN DE PEDIDO (APPLE STYLE FEEDBACK)
+      if (confirmedOrder) {
+        return (
+          <div className="max-w-lg mx-auto min-h-screen px-6 pt-12 pb-20 flex flex-col justify-between">
+            <div className="space-y-6">
+              
+              <div className="flex items-center space-x-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-amber-700">En Revisión</span>
+              </div>
+
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight text-apple-text">Solicitud Recibida</h1>
+                <p className="text-sm text-apple-subtext mt-1">
+                  Orden <span className="font-semibold text-apple-text">{confirmedOrder.orderNumber}</span> asignada a {confirmedOrder.customerName}.
+                </p>
+              </div>
+
+              {/* Tarjeta de Resumen */}
+              <div className="p-5 bg-apple-card border border-apple-border rounded-2xl space-y-4">
+                <div className="flex justify-between items-center pb-3 border-b border-apple-border/50 text-xs">
+                  <span className="text-apple-subtext">Fecha Solicitada</span>
+                  <span className="font-medium text-apple-text">{confirmedOrder.deliveryDate}</span>
+                </div>
+
+                <div className="space-y-1.5 text-xs text-apple-subtext">
+                  {confirmedOrder.items.map((it, idx) => (
+                    <div key={idx} className="flex justify-between">
+                      <span>{it.quantity}x {it.name}</span>
+                      <span className="text-apple-text font-medium">{formatRD(it.lineTotal)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-3 border-t border-apple-border/50 space-y-1 text-xs">
+                  <div className="flex justify-between text-apple-subtext">
+                    <span>Total de la orden</span>
+                    <span className="text-apple-text font-medium">{formatRD(confirmedOrder.calculation.total)}</span>
+                  </div>
+                  <div className="flex justify-between text-apple-pink font-semibold">
+                    <span>Anticipo requerido (50%)</span>
+                    <span>{formatRD(confirmedOrder.depositRequired)}</span>
+                  </div>
+                  <div className="flex justify-between text-apple-subtext text-[11px]">
+                    <span>Balance contra entrega</span>
+                    <span>{formatRD(confirmedOrder.calculation.total - confirmedOrder.depositRequired)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Aviso de Plazo Límite & Política */}
+              <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl space-y-1.5 text-xs text-amber-900">
+                <span className="font-semibold block">⏳ Reserva de Cupo (Válida por 6 horas)</span>
+                <p className="text-[11.5px] leading-relaxed text-amber-800">
+                  Una vez que LeRoss Bakery confirme la disponibilidad de tu fecha, dispones de <b>6 horas</b> para enviar el comprobante del 50% de anticipo. Transcurrido ese tiempo, el cupo en el horno se libera.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-6">
+              <a
+                href={confirmedOrder.waUrl}
+                target="_blank"
+                className="w-full bg-[#1D1D1F] hover:bg-black text-white font-medium py-3.5 rounded-2xl shadow-lg text-sm text-center block tracking-tight active:scale-[0.99] transition-all"
+              >
+                Abrir WhatsApp con LeRoss Bakery
+              </a>
+              <button
+                onClick={() => setConfirmedOrder(null)}
+                className="w-full text-xs text-apple-subtext hover:text-apple-text py-2"
+              >
+                ← Volver al catálogo principal
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      // VISTA PRINCIPAL DEL CATÁLOGO
       return (
         <div className="max-w-lg mx-auto min-h-screen px-6 pt-12 pb-32">
           
-          {/* Header Minimalista */}
+          {/* Header */}
           <header className="flex items-center justify-between pb-8 border-b border-apple-border/40">
             <div className="flex items-center space-x-3.5">
               {business.customLogo ? (
@@ -255,12 +365,15 @@
             )}
           </header>
 
-          {/* Declaración de Apertura */}
+          {/* Declaración de Apertura & Política de 36 Horas */}
           <div className="pt-8 pb-6">
             <p className="text-xs uppercase tracking-widest text-apple-subtext font-medium mb-1">Repostería Artesanal</p>
             <h2 className="text-2xl font-medium tracking-tight text-apple-text leading-snug">
-              Postres horneados con dedicación, listos para tu ocasión especial.
+              Postres horneados desde cero con ingredientes frescos.
             </h2>
+            <div className="mt-3 inline-flex items-center space-x-1.5 px-3 py-1 bg-apple-card border border-apple-border rounded-full text-[11px] text-apple-subtext">
+              <span>⏱️ Pedidos con un mínimo de 36 horas de anticipación</span>
+            </div>
           </div>
 
           {/* Menú de Postres */}
@@ -305,7 +418,7 @@
             })}
           </main>
 
-          {/* Dynamic Island / Dock Flotante */}
+          {/* Barra Flotante Dynamic Dock */}
           {totalItemCount > 0 && !showCheckout && (
             <div className="fixed bottom-6 left-0 right-0 max-w-lg mx-auto px-6 z-30">
               <button 
@@ -319,7 +432,7 @@
                 <div className="flex items-center space-x-2 text-sm font-medium tracking-tight">
                   <span>{formatRD(cartTotal)}</span>
                   <span className="text-white/60">·</span>
-                  <span>Ordenar →</span>
+                  <span>Continuar →</span>
                 </div>
               </button>
             </div>
@@ -328,10 +441,10 @@
           {/* Checkout Sheet */}
           {showCheckout && (
             <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-end justify-center p-0 transition-opacity">
-              <div className="bg-white w-full max-w-lg rounded-t-[32px] p-7 space-y-6 max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
+              <div className="bg-white w-full max-w-lg rounded-t-[32px] p-7 space-y-5 max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
                 
                 <div className="flex justify-between items-center pb-2">
-                  <h3 className="text-lg font-semibold tracking-tight text-apple-text">Confirmar Orden</h3>
+                  <h3 className="text-lg font-semibold tracking-tight text-apple-text">Detalles del Pedido</h3>
                   <button 
                     onClick={() => setShowCheckout(false)} 
                     className="w-8 h-8 rounded-full bg-apple-card flex items-center justify-center text-apple-subtext text-xs"
@@ -340,63 +453,79 @@
                   </button>
                 </div>
 
-                <div className="space-y-2 py-2 border-y border-apple-border/40">
+                {/* Resumen & Desglose 50% */}
+                <div className="p-4 bg-apple-card border border-apple-border rounded-2xl space-y-2 text-xs">
                   {cartItems.map(item => (
-                    <div key={item.id} className="flex justify-between text-xs tracking-tight">
+                    <div key={item.id} className="flex justify-between">
                       <span className="text-apple-subtext">{item.quantity}x {item.name}</span>
                       <span className="font-medium text-apple-text">{formatRD(item.total)}</span>
                     </div>
                   ))}
-                  <div className="pt-2 flex justify-between items-center text-sm font-semibold tracking-tight">
-                    <span>Total Estimado</span>
+                  <div className="pt-2 border-t border-apple-border/50 flex justify-between font-semibold text-apple-text text-sm">
+                    <span>Total Estimado:</span>
                     <span>{formatRD(cartTotal)}</span>
                   </div>
+                  <div className="flex justify-between text-apple-pink font-semibold pt-1 border-t border-dashed border-apple-border/50">
+                    <span>Anticipo para Reservar (50%):</span>
+                    <span>{formatRD(depositAmount)}</span>
+                  </div>
+                  <p className="text-[10px] text-apple-subtext pt-0.5">
+                    El 50% restante se paga contra entrega. Dispones de 6 horas para transferir una vez confirmada la disponibilidad.
+                  </p>
                 </div>
 
-                <form onSubmit={handlePlaceOrder} className="space-y-4">
+                <form onSubmit={handlePlaceOrder} className="space-y-3.5">
                   <div>
-                    <label className="text-xs text-apple-subtext block mb-1.5 font-medium">Nombre completo</label>
+                    <label className="text-xs text-apple-subtext block mb-1 font-medium">Nombre completo</label>
                     <input 
                       required
                       type="text" 
-                      placeholder="Tu nombre" 
+                      placeholder="Tu nombre y apellido" 
                       value={customerData.name}
                       onChange={e => setCustomerData({ ...customerData, name: e.target.value })}
-                      className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-3 text-sm text-apple-text outline-none focus:border-apple-text transition-colors"
+                      className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-2.5 text-sm text-apple-text outline-none focus:border-apple-text transition-colors"
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-apple-subtext block mb-1.5 font-medium">WhatsApp</label>
+                      <label className="text-xs text-apple-subtext block mb-1 font-medium">WhatsApp</label>
                       <input 
                         required
                         type="tel" 
                         placeholder="829-000-0000" 
                         value={customerData.phone}
                         onChange={e => setCustomerData({ ...customerData, phone: e.target.value })}
-                        className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-3 text-sm text-apple-text outline-none focus:border-apple-text transition-colors"
+                        className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-2.5 text-sm text-apple-text outline-none focus:border-apple-text transition-colors"
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-apple-subtext block mb-1.5 font-medium">Fecha deseada</label>
+                      <label className="text-xs text-apple-subtext block mb-1 font-medium">
+                        Fecha de Entrega
+                      </label>
                       <input 
-                        type="date" 
+                        required
+                        type="date"
+                        min={minDateAllowed}
                         value={customerData.deliveryDate}
                         onChange={e => setCustomerData({ ...customerData, deliveryDate: e.target.value })}
-                        className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-3 text-sm text-apple-text outline-none focus:border-apple-text transition-colors"
+                        className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-2.5 text-sm text-apple-text outline-none focus:border-apple-text transition-colors"
                       />
                     </div>
                   </div>
 
+                  <p className="text-[10px] text-apple-subtext">
+                    * Bloqueo automático: Las fechas requieren un mínimo de 36 horas de anticipación.
+                  </p>
+
                   <div>
-                    <label className="text-xs text-apple-subtext block mb-1.5 font-medium">Dedicatoria o nota (opcional)</label>
+                    <label className="text-xs text-apple-subtext block mb-1 font-medium">Dedicatoria o notas (opcional)</label>
                     <input 
                       type="text" 
-                      placeholder="Ej. Escribir: 'Felicidades María'" 
+                      placeholder="Ej. 'Felicidades Mamá' / Envío a Piantini" 
                       value={customerData.notes}
                       onChange={e => setCustomerData({ ...customerData, notes: e.target.value })}
-                      className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-3 text-sm text-apple-text outline-none focus:border-apple-text transition-colors"
+                      className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-2.5 text-sm text-apple-text outline-none focus:border-apple-text transition-colors"
                     />
                   </div>
 
@@ -405,12 +534,8 @@
                     disabled={isSending}
                     className="w-full bg-[#1D1D1F] hover:bg-black text-white font-medium py-3.5 rounded-2xl shadow-lg text-sm tracking-tight transition-all active:scale-[0.99] disabled:opacity-50 pt-3"
                   >
-                    {isSending ? "Preparando WhatsApp..." : "Completar Orden por WhatsApp"}
+                    {isSending ? "Registrando orden..." : "Solicitar Pedido por WhatsApp"}
                   </button>
-
-                  <p className="text-[11px] text-apple-subtext text-center pt-1">
-                    Coordinamos el pago y envío por transferencia bancaria en el chat.
-                  </p>
                 </form>
 
               </div>
@@ -425,4 +550,3 @@
   </script>
 </body>
 </html>
-
