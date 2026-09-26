@@ -88,10 +88,10 @@
       });
 
       const [products, setProducts] = useState([
-        { id: "p1", name: "Flan Tradicional Casero", price: 1200 },
-        { id: "p2", name: "Caja Mini Brownies (12 uds)", price: 650 },
-        { id: "p3", name: "Tres Leches Clásico Familiar", price: 1500 },
-        { id: "p4", name: "Pudín Dominicano Decorado", price: 2400 }
+        { id: "p1", name: "Flan Tradicional Casero", price: 1200, image: "" },
+        { id: "p2", name: "Caja Mini Brownies (12 uds)", price: 650, image: "" },
+        { id: "p3", name: "Tres Leches Clásico Familiar", price: 1500, image: "" },
+        { id: "p4", name: "Pudín Dominicano Decorado", price: 2400, image: "" }
       ]);
 
       const [cart, setCart] = useState({});
@@ -99,7 +99,6 @@
       const [isSending, setIsSending] = useState(false);
       const [confirmedOrder, setConfirmedOrder] = useState(null);
 
-      // Mínimo de 36 horas hacia adelante (bloqueo automático de fechas no viables)
       const minDateAllowed = useMemo(() => {
         const d = new Date(Date.now() + 36 * 60 * 60 * 1000);
         return d.toISOString().split("T")[0];
@@ -112,7 +111,6 @@
         notes: ""
       });
 
-      // Sincronización en vivo con Firestore
       useEffect(() => {
         if (!db) return;
         const unsubscribe = db.collection("leross_app").doc("main_data").onSnapshot(
@@ -153,14 +151,10 @@
         return cartItems.reduce((acc, item) => acc + item.total, 0);
       }, [cartItems]);
 
-      const depositAmount = useMemo(() => Math.round(cartTotal * 0.5), [cartTotal]);
-      const remainingAmount = useMemo(() => cartTotal - depositAmount, [cartTotal, depositAmount]);
-
       const totalItemCount = useMemo(() => {
         return Object.values(cart).reduce((acc, qty) => acc + qty, 0);
       }, [cart]);
 
-      // Enviar Pedido
       const handlePlaceOrder = async (e) => {
         e.preventDefault();
         if (!customerData.name.trim() || !customerData.phone.trim()) {
@@ -200,11 +194,10 @@
           orderDiscountType: "amount",
           orderDiscountVal: 0,
           paymentStatus: "Pendiente",
-          paymentMethod: "Transferencia (50% anticipo)",
-          approvalStatus: "Pendiente", // Pendiente, Aceptada, Rechazada
+          paymentMethod: "Transferencia (100% total)",
+          approvalStatus: "Pendiente",
           rejectionReason: "",
           state: "Borrador",
-          depositRequired: depositAmount,
           calculation: {
             lines: draftItems,
             subtotal: cartTotal,
@@ -226,18 +219,15 @@
           console.error("Error guardando orden:", err);
         }
 
-        // Formato de WhatsApp
         const itemsList = cartItems.map(i => `• ${i.quantity}x ${i.name} — ${formatRD(i.total)}`).join("\n");
         const waMsg = `🧁 *Solicitud de Pedido #${orderCode}*\n\n` +
           `*Cliente:* ${customerData.name.trim()}\n` +
           `*WhatsApp:* ${customerData.phone.trim()}\n` +
-          `*Fecha requerida:* ${customerData.deliveryDate}\n` +
+          `*Fecha solicitada:* ${customerData.deliveryDate}\n` +
           (customerData.notes ? `*Detalles:* ${customerData.notes}\n\n` : '\n') +
           `*Orden solicitada:*\n${itemsList}\n\n` +
-          `*Total Estimado:* ${formatRD(cartTotal)}\n` +
-          `*Anticipo para reservar (50%):* ${formatRD(depositAmount)}\n` +
-          `*Restante contra entrega:* ${formatRD(remainingAmount)}\n\n` +
-          `¿Me confirman disponibilidad para reservar el cupo?`;
+          `*Total a Pagar (100%):* ${formatRD(cartTotal)}\n\n` +
+          `¿Me confirman disponibilidad para transferir el pago total y reservar el cupo?`;
 
         const cleanDestPhone = (business.phone || "849-441-1315").replace(/\D/g, "");
         const targetPhone = cleanDestPhone.length === 10 ? "1" + cleanDestPhone : cleanDestPhone;
@@ -253,11 +243,9 @@
         setShowCheckout(false);
         setCart({});
 
-        // Abre WhatsApp en una pestaña
         window.open(waUrl, "_blank");
       };
 
-      // VISTA DE CONFIRMACIÓN DE PEDIDO (APPLE STYLE FEEDBACK)
       if (confirmedOrder) {
         return (
           <div className="max-w-lg mx-auto min-h-screen px-6 pt-12 pb-20 flex flex-col justify-between">
@@ -271,11 +259,10 @@
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight text-apple-text">Solicitud Recibida</h1>
                 <p className="text-sm text-apple-subtext mt-1">
-                  Orden <span className="font-semibold text-apple-text">{confirmedOrder.orderNumber}</span> asignada a {confirmedOrder.customerName}.
+                  Orden <span className="font-semibold text-apple-text">{confirmedOrder.orderNumber}</span> registrada para {confirmedOrder.customerName}.
                 </p>
               </div>
 
-              {/* Tarjeta de Resumen */}
               <div className="p-5 bg-apple-card border border-apple-border rounded-2xl space-y-4">
                 <div className="flex justify-between items-center pb-3 border-b border-apple-border/50 text-xs">
                   <span className="text-apple-subtext">Fecha Solicitada</span>
@@ -291,27 +278,16 @@
                   ))}
                 </div>
 
-                <div className="pt-3 border-t border-apple-border/50 space-y-1 text-xs">
-                  <div className="flex justify-between text-apple-subtext">
-                    <span>Total de la orden</span>
-                    <span className="text-apple-text font-medium">{formatRD(confirmedOrder.calculation.total)}</span>
-                  </div>
-                  <div className="flex justify-between text-apple-pink font-semibold">
-                    <span>Anticipo requerido (50%)</span>
-                    <span>{formatRD(confirmedOrder.depositRequired)}</span>
-                  </div>
-                  <div className="flex justify-between text-apple-subtext text-[11px]">
-                    <span>Balance contra entrega</span>
-                    <span>{formatRD(confirmedOrder.calculation.total - confirmedOrder.depositRequired)}</span>
-                  </div>
+                <div className="pt-3 border-t border-apple-border/50 flex justify-between items-center text-sm font-semibold">
+                  <span className="text-apple-text">Total a Pagar (100%)</span>
+                  <span className="text-apple-pink text-base">{formatRD(confirmedOrder.calculation.total)}</span>
                 </div>
               </div>
 
-              {/* Aviso de Plazo Límite & Política */}
               <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl space-y-1.5 text-xs text-amber-900">
-                <span className="font-semibold block">⏳ Reserva de Cupo (Válida por 6 horas)</span>
+                <span className="font-semibold block">⏳ Reserva de Cupo (Válida por 3 horas)</span>
                 <p className="text-[11.5px] leading-relaxed text-amber-800">
-                  Una vez que LeRoss Bakery confirme la disponibilidad de tu fecha, dispones de <b>6 horas</b> para enviar el comprobante del 50% de anticipo. Transcurrido ese tiempo, el cupo en el horno se libera.
+                  Al confirmar la disponibilidad de tu fecha, dispones de <b>3 horas</b> para transferir el 100% del pago. Transcurrido ese plazo, el cupo en horno se libera para otro pedido.
                 </p>
               </div>
             </div>
@@ -335,11 +311,9 @@
         );
       }
 
-      // VISTA PRINCIPAL DEL CATÁLOGO
       return (
         <div className="max-w-lg mx-auto min-h-screen px-6 pt-12 pb-32">
           
-          {/* Header */}
           <header className="flex items-center justify-between pb-8 border-b border-apple-border/40">
             <div className="flex items-center space-x-3.5">
               {business.customLogo ? (
@@ -365,7 +339,6 @@
             )}
           </header>
 
-          {/* Declaración de Apertura & Política de 36 Horas */}
           <div className="pt-8 pb-6">
             <p className="text-xs uppercase tracking-widest text-apple-subtext font-medium mb-1">Repostería Artesanal</p>
             <h2 className="text-2xl font-medium tracking-tight text-apple-text leading-snug">
@@ -376,15 +349,23 @@
             </div>
           </div>
 
-          {/* Menú de Postres */}
           <main className="divide-y divide-apple-border/50">
             {products.map(prod => {
               const qty = cart[prod.id] || 0;
               return (
-                <div key={prod.id} className="py-5 flex items-center justify-between">
-                  <div className="pr-4">
-                    <h3 className="text-[15px] font-medium text-apple-text tracking-tight leading-snug">{prod.name}</h3>
-                    <p className="text-sm text-apple-subtext font-normal mt-0.5">{formatRD(prod.price)}</p>
+                <div key={prod.id} className="py-4 flex items-center justify-between">
+                  <div className="flex items-center space-x-3.5 pr-3">
+                    {prod.image && (
+                      <img 
+                        src={prod.image} 
+                        alt={prod.name} 
+                        className="w-14 h-14 rounded-2xl object-cover border border-apple-border/60 flex-shrink-0"
+                      />
+                    )}
+                    <div>
+                      <h3 className="text-[15px] font-medium text-apple-text tracking-tight leading-snug">{prod.name}</h3>
+                      <p className="text-sm text-apple-subtext font-normal mt-0.5">{formatRD(prod.price)}</p>
+                    </div>
                   </div>
 
                   <div>
@@ -418,7 +399,6 @@
             })}
           </main>
 
-          {/* Barra Flotante Dynamic Dock */}
           {totalItemCount > 0 && !showCheckout && (
             <div className="fixed bottom-6 left-0 right-0 max-w-lg mx-auto px-6 z-30">
               <button 
@@ -438,7 +418,6 @@
             </div>
           )}
 
-          {/* Checkout Sheet */}
           {showCheckout && (
             <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-end justify-center p-0 transition-opacity">
               <div className="bg-white w-full max-w-lg rounded-t-[32px] p-7 space-y-5 max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
@@ -453,7 +432,6 @@
                   </button>
                 </div>
 
-                {/* Resumen & Desglose 50% */}
                 <div className="p-4 bg-apple-card border border-apple-border rounded-2xl space-y-2 text-xs">
                   {cartItems.map(item => (
                     <div key={item.id} className="flex justify-between">
@@ -462,15 +440,11 @@
                     </div>
                   ))}
                   <div className="pt-2 border-t border-apple-border/50 flex justify-between font-semibold text-apple-text text-sm">
-                    <span>Total Estimado:</span>
-                    <span>{formatRD(cartTotal)}</span>
-                  </div>
-                  <div className="flex justify-between text-apple-pink font-semibold pt-1 border-t border-dashed border-apple-border/50">
-                    <span>Anticipo para Reservar (50%):</span>
-                    <span>{formatRD(depositAmount)}</span>
+                    <span>Total a Pagar (100%):</span>
+                    <span className="text-apple-pink text-base">{formatRD(cartTotal)}</span>
                   </div>
                   <p className="text-[10px] text-apple-subtext pt-0.5">
-                    El 50% restante se paga contra entrega. Dispones de 6 horas para transferir una vez confirmada la disponibilidad.
+                    * El pago completo del 100% se realiza tras confirmar disponibilidad. Cuentas con 3 horas para transferir y fijar tu pedido.
                   </p>
                 </div>
 
@@ -513,10 +487,6 @@
                       />
                     </div>
                   </div>
-
-                  <p className="text-[10px] text-apple-subtext">
-                    * Bloqueo automático: Las fechas requieren un mínimo de 36 horas de anticipación.
-                  </p>
 
                   <div>
                     <label className="text-xs text-apple-subtext block mb-1 font-medium">Dedicatoria o notas (opcional)</label>
