@@ -316,7 +316,7 @@
       return (
         <div className="max-w-lg mx-auto min-h-screen px-6 pt-10 pb-32">
           
-          {/* Cabecera con Logo de Mayor Escala */}
+          {/* Header */}
           <header className="flex items-center justify-between pb-8 border-b border-apple-border/40">
             <div className="flex items-center space-x-3.5">
               {business.customLogo ? (
@@ -346,10 +346,13 @@
             )}
           </header>
 
-          {/* Apertura con Titulares Solicitados */}
+          {/* Headline Locked to Single Line */}
           <div className="pt-8 pb-6">
             <p className="text-xs uppercase tracking-widest text-apple-subtext font-medium mb-1.5">Repostería Artesanal</p>
-            <h2 className="text-2xl font-semibold tracking-tight text-apple-text leading-snug">
+            <h2 
+              className="font-semibold tracking-tight text-apple-text whitespace-nowrap overflow-hidden text-ellipsis leading-tight"
+              style={{ fontSize: "clamp(15px, 4.3vw, 22px)" }}
+            >
               Postres hechos en casa, horneados con amor.
             </h2>
             <p className="text-sm text-apple-subtext font-normal mt-1 leading-relaxed">
@@ -360,7 +363,7 @@
             </div>
           </div>
 
-          {/* Lista de Postres con Imágenes Grandes y Visor */}
+          {/* Dessert List */}
           <main className="divide-y divide-apple-border/50">
             {products.map(prod => {
               const qty = cart[prod.id] || 0;
@@ -401,7 +404,6 @@
                     </div>
                   </div>
 
-                  {/* Selector Táctil Ergonómico */}
                   <div className="flex-shrink-0 pl-2">
                     {qty > 0 ? (
                       <div className="flex items-center bg-apple-card border border-apple-border rounded-full p-1 space-x-2.5 shadow-sm">
@@ -439,7 +441,7 @@
             })}
           </main>
 
-          {/* Dynamic Island / Dock Flotante */}
+          {/* Floating Pill Dock */}
           {totalItemCount > 0 && !showCheckout && (
             <div className="fixed bottom-6 left-0 right-0 max-w-lg mx-auto px-6 z-30">
               <button 
@@ -460,7 +462,7 @@
             </div>
           )}
 
-          {/* Checkout Sheet con Edición Rápida */}
+          {/* Checkout Sheet */}
           {showCheckout && (
             <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-end justify-center p-0 transition-opacity">
               <div className="bg-white w-full max-w-lg rounded-t-[32px] p-7 space-y-5 max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
@@ -581,7 +583,7 @@
             </div>
           )}
 
-          {/* Lightbox / Visor de Fotos Ampliadas */}
+          {/* Lightbox Modal */}
           {viewingImage && (
             <div 
               onClick={() => setViewingImage(null)}
