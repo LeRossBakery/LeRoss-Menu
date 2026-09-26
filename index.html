@@ -69,9 +69,10 @@
       color: #1D1D1F;
     }
     input, textarea { font-size: 16px !important; }
+    button { touch-action: manipulation; }
   </style>
 </head>
-<body>
+<body class="selection:bg-apple-pink/20">
   <div id="root"></div>
 
   <script type="text/babel">
@@ -98,6 +99,7 @@
       const [showCheckout, setShowCheckout] = useState(false);
       const [isSending, setIsSending] = useState(false);
       const [confirmedOrder, setConfirmedOrder] = useState(null);
+      const [viewingImage, setViewingImage] = useState(null);
 
       const minDateAllowed = useMemo(() => {
         const d = new Date(Date.now() + 36 * 60 * 60 * 1000);
@@ -128,14 +130,15 @@
 
       const updateQuantity = (prodId, delta) => {
         setCart(prev => {
-          const current = prev[prodId] || 0;
+          const current = Number(prev[prodId] || 0);
           const next = current + delta;
+          const updated = { ...prev };
           if (next <= 0) {
-            const copy = { ...prev };
-            delete copy[prodId];
-            return copy;
+            delete updated[prodId];
+          } else {
+            updated[prodId] = next;
           }
-          return { ...prev, [prodId]: next };
+          return updated;
         });
       };
 
@@ -250,7 +253,6 @@
         return (
           <div className="max-w-lg mx-auto min-h-screen px-6 pt-12 pb-20 flex flex-col justify-between">
             <div className="space-y-6">
-              
               <div className="flex items-center space-x-2.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
                 <span className="text-xs font-semibold uppercase tracking-wider text-amber-700">En Revisión</span>
@@ -312,15 +314,20 @@
       }
 
       return (
-        <div className="max-w-lg mx-auto min-h-screen px-6 pt-12 pb-32">
+        <div className="max-w-lg mx-auto min-h-screen px-6 pt-10 pb-32">
           
+          {/* Cabecera con Logo de Mayor Escala */}
           <header className="flex items-center justify-between pb-8 border-b border-apple-border/40">
             <div className="flex items-center space-x-3.5">
               {business.customLogo ? (
-                <img src={business.customLogo} alt="Logo" className="w-10 h-10 object-contain rounded-xl" />
+                <img 
+                  src={business.customLogo} 
+                  alt="Logo" 
+                  className="max-h-16 max-w-[130px] w-auto h-auto object-contain rounded-xl" 
+                />
               ) : (
-                <div className="w-10 h-10 rounded-xl bg-apple-pink flex items-center justify-center text-white text-xs font-bold">
-                  LR
+                <div className="w-14 h-14 rounded-2xl bg-apple-pink flex items-center justify-center text-white text-sm font-bold shadow-sm">
+                  LeRoss
                 </div>
               )}
               <div>
@@ -332,65 +339,98 @@
               <a 
                 href={`https://instagram.com/${business.instagram.replace('@','')}`} 
                 target="_blank" 
-                className="text-xs text-apple-subtext hover:text-apple-text tracking-tight transition-colors"
+                className="text-xs text-apple-subtext hover:text-apple-text tracking-tight transition-colors py-1 px-2.5 rounded-full border border-apple-border/60"
               >
                 {business.instagram}
               </a>
             )}
           </header>
 
+          {/* Apertura con Titulares Solicitados */}
           <div className="pt-8 pb-6">
-            <p className="text-xs uppercase tracking-widest text-apple-subtext font-medium mb-1">Repostería Artesanal</p>
-            <h2 className="text-2xl font-medium tracking-tight text-apple-text leading-snug">
-              Postres horneados desde cero con ingredientes frescos.
+            <p className="text-xs uppercase tracking-widest text-apple-subtext font-medium mb-1.5">Repostería Artesanal</p>
+            <h2 className="text-2xl font-semibold tracking-tight text-apple-text leading-snug">
+              Postres hechos en casa, horneados con amor.
             </h2>
-            <div className="mt-3 inline-flex items-center space-x-1.5 px-3 py-1 bg-apple-card border border-apple-border rounded-full text-[11px] text-apple-subtext">
+            <p className="text-sm text-apple-subtext font-normal mt-1 leading-relaxed">
+              Ideales para celebrar, compartir y disfrutar.
+            </p>
+            <div className="mt-3.5 inline-flex items-center space-x-1.5 px-3 py-1 bg-apple-card border border-apple-border rounded-full text-[11px] text-apple-subtext">
               <span>⏱️ Pedidos con un mínimo de 36 horas de anticipación</span>
             </div>
           </div>
 
+          {/* Lista de Postres con Imágenes Grandes y Visor */}
           <main className="divide-y divide-apple-border/50">
             {products.map(prod => {
               const qty = cart[prod.id] || 0;
+              const hasMultiple = qty > 1;
+
               return (
-                <div key={prod.id} className="py-4 flex items-center justify-between">
-                  <div className="flex items-center space-x-3.5 pr-3">
-                    {prod.image && (
-                      <img 
-                        src={prod.image} 
-                        alt={prod.name} 
-                        className="w-14 h-14 rounded-2xl object-cover border border-apple-border/60 flex-shrink-0"
-                      />
+                <div key={prod.id} className="py-4.5 flex items-center justify-between">
+                  <div className="flex items-center space-x-3.5 pr-2 flex-1">
+                    {prod.image ? (
+                      <div 
+                        onClick={() => setViewingImage({ src: prod.image, title: prod.name })}
+                        className="w-20 h-20 rounded-2xl overflow-hidden border border-apple-border/70 flex-shrink-0 cursor-pointer relative group bg-apple-card shadow-xs"
+                      >
+                        <img 
+                          src={prod.image} 
+                          alt={prod.name} 
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                        <span className="absolute bottom-1 right-1 bg-black/50 text-white rounded-md text-[9px] px-1 py-0.2 backdrop-blur-xs">
+                          🔍
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 rounded-2xl bg-apple-card border border-apple-border/50 flex flex-col items-center justify-center text-apple-subtext text-xl flex-shrink-0">
+                        <span>🧁</span>
+                      </div>
                     )}
-                    <div>
-                      <h3 className="text-[15px] font-medium text-apple-text tracking-tight leading-snug">{prod.name}</h3>
-                      <p className="text-sm text-apple-subtext font-normal mt-0.5">{formatRD(prod.price)}</p>
+
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-[15px] font-semibold text-apple-text tracking-tight leading-snug truncate">{prod.name}</h3>
+                      <p className="text-sm font-medium text-apple-subtext mt-0.5">{formatRD(prod.price)}</p>
+                      
+                      {hasMultiple && (
+                        <p className="text-xs font-semibold text-apple-pink mt-1">
+                          Total: {formatRD(prod.price * qty)} <span className="text-[10px] text-apple-subtext font-normal">({qty} uds)</span>
+                        </p>
+                      )}
                     </div>
                   </div>
 
-                  <div>
+                  {/* Selector Táctil Ergonómico */}
+                  <div className="flex-shrink-0 pl-2">
                     {qty > 0 ? (
-                      <div className="flex items-center bg-apple-card border border-apple-border rounded-full p-1 space-x-3 shadow-sm">
+                      <div className="flex items-center bg-apple-card border border-apple-border rounded-full p-1 space-x-2.5 shadow-sm">
                         <button 
+                          type="button"
                           onClick={() => updateQuantity(prod.id, -1)}
-                          className="w-7 h-7 rounded-full bg-white text-apple-text text-sm flex items-center justify-center shadow-xs active:scale-90 transition-transform"
+                          className="w-8 h-8 rounded-full bg-white text-apple-text text-base font-bold flex items-center justify-center shadow-xs active:scale-90 transition-transform"
+                          aria-label="Restar"
                         >
-                          –
+                          −
                         </button>
-                        <span className="text-xs font-semibold text-apple-text min-w-[12px] text-center">{qty}</span>
+                        <span className="text-xs font-semibold text-apple-text min-w-[14px] text-center select-none">{qty}</span>
                         <button 
+                          type="button"
                           onClick={() => updateQuantity(prod.id, 1)}
-                          className="w-7 h-7 rounded-full bg-white text-apple-text text-sm flex items-center justify-center shadow-xs active:scale-90 transition-transform"
+                          className="w-8 h-8 rounded-full bg-white text-apple-text text-base font-bold flex items-center justify-center shadow-xs active:scale-90 transition-transform"
+                          aria-label="Sumar"
                         >
                           +
                         </button>
                       </div>
                     ) : (
                       <button 
+                        type="button"
                         onClick={() => updateQuantity(prod.id, 1)}
-                        className="w-9 h-9 rounded-full bg-apple-card hover:bg-apple-border/50 text-apple-text text-lg flex items-center justify-center transition-colors active:scale-95"
+                        className="h-9 px-3.5 rounded-full bg-apple-card hover:bg-apple-border/50 text-apple-text text-xs font-semibold flex items-center space-x-1 transition-colors active:scale-95 border border-apple-border/60"
                       >
-                        +
+                        <span>+</span>
+                        <span>Agregar</span>
                       </button>
                     )}
                   </div>
@@ -399,25 +439,28 @@
             })}
           </main>
 
+          {/* Dynamic Island / Dock Flotante */}
           {totalItemCount > 0 && !showCheckout && (
             <div className="fixed bottom-6 left-0 right-0 max-w-lg mx-auto px-6 z-30">
               <button 
+                type="button"
                 onClick={() => setShowCheckout(true)}
-                className="w-full bg-[#1D1D1F]/90 hover:bg-[#1D1D1F] backdrop-blur-xl text-white py-3.5 px-6 rounded-full shadow-2xl flex items-center justify-between active:scale-[0.98] transition-all"
+                className="w-full bg-[#1D1D1F]/95 hover:bg-black backdrop-blur-xl text-white py-3.5 px-6 rounded-full shadow-2xl flex items-center justify-between active:scale-[0.98] transition-all"
               >
                 <div className="flex items-center space-x-2 text-xs font-medium tracking-tight">
-                  <span className="bg-white/20 px-2 py-0.5 rounded-full text-[11px]">{totalItemCount}</span>
+                  <span className="bg-white/20 px-2 py-0.5 rounded-full text-[11px] font-semibold">{totalItemCount}</span>
                   <span>{totalItemCount === 1 ? 'postre' : 'postres'}</span>
                 </div>
                 <div className="flex items-center space-x-2 text-sm font-medium tracking-tight">
                   <span>{formatRD(cartTotal)}</span>
                   <span className="text-white/60">·</span>
-                  <span>Continuar →</span>
+                  <span className="font-semibold">Continuar →</span>
                 </div>
               </button>
             </div>
           )}
 
+          {/* Checkout Sheet con Edición Rápida */}
           {showCheckout && (
             <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-end justify-center p-0 transition-opacity">
               <div className="bg-white w-full max-w-lg rounded-t-[32px] p-7 space-y-5 max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
@@ -425,6 +468,7 @@
                 <div className="flex justify-between items-center pb-2">
                   <h3 className="text-lg font-semibold tracking-tight text-apple-text">Detalles del Pedido</h3>
                   <button 
+                    type="button"
                     onClick={() => setShowCheckout(false)} 
                     className="w-8 h-8 rounded-full bg-apple-card flex items-center justify-center text-apple-subtext text-xs"
                   >
@@ -432,18 +476,43 @@
                   </button>
                 </div>
 
-                <div className="p-4 bg-apple-card border border-apple-border rounded-2xl space-y-2 text-xs">
-                  {cartItems.map(item => (
-                    <div key={item.id} className="flex justify-between">
-                      <span className="text-apple-subtext">{item.quantity}x {item.name}</span>
-                      <span className="font-medium text-apple-text">{formatRD(item.total)}</span>
-                    </div>
-                  ))}
-                  <div className="pt-2 border-t border-apple-border/50 flex justify-between font-semibold text-apple-text text-sm">
+                <div className="p-4 bg-apple-card border border-apple-border rounded-2xl space-y-3 text-xs">
+                  <div className="divide-y divide-apple-border/50">
+                    {cartItems.map(item => (
+                      <div key={item.id} className="py-2.5 flex justify-between items-center">
+                        <div className="pr-2">
+                          <p className="font-medium text-apple-text">{item.name}</p>
+                          <p className="text-apple-subtext text-[11px]">{formatRD(item.price)} c/u</p>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                          <div className="flex items-center bg-white border border-apple-border rounded-full p-0.5 space-x-1.5 shadow-xs">
+                            <button 
+                              type="button"
+                              onClick={() => updateQuantity(item.id, -1)} 
+                              className="w-6 h-6 rounded-full bg-apple-card text-apple-text font-bold flex items-center justify-center text-xs active:scale-90"
+                            >
+                              −
+                            </button>
+                            <span className="text-xs font-semibold px-1 min-w-[14px] text-center">{item.quantity}</span>
+                            <button 
+                              type="button"
+                              onClick={() => updateQuantity(item.id, 1)} 
+                              className="w-6 h-6 rounded-full bg-apple-card text-apple-text font-bold flex items-center justify-center text-xs active:scale-90"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <span className="font-semibold text-apple-text min-w-[65px] text-right">{formatRD(item.total)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pt-2 border-t border-apple-border/60 flex justify-between font-semibold text-apple-text text-sm">
                     <span>Total a Pagar (100%):</span>
                     <span className="text-apple-pink text-base">{formatRD(cartTotal)}</span>
                   </div>
-                  <p className="text-[10px] text-apple-subtext pt-0.5">
+                  <p className="text-[10.5px] text-apple-subtext pt-0.5">
                     * El pago completo del 100% se realiza tras confirmar disponibilidad. Cuentas con 3 horas para transferir y fijar tu pedido.
                   </p>
                 </div>
@@ -501,13 +570,38 @@
 
                   <button 
                     type="submit"
-                    disabled={isSending}
+                    disabled={isSending || cartItems.length === 0}
                     className="w-full bg-[#1D1D1F] hover:bg-black text-white font-medium py-3.5 rounded-2xl shadow-lg text-sm tracking-tight transition-all active:scale-[0.99] disabled:opacity-50 pt-3"
                   >
                     {isSending ? "Registrando orden..." : "Solicitar Pedido por WhatsApp"}
                   </button>
                 </form>
 
+              </div>
+            </div>
+          )}
+
+          {/* Lightbox / Visor de Fotos Ampliadas */}
+          {viewingImage && (
+            <div 
+              onClick={() => setViewingImage(null)}
+              className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 animate-in fade-in duration-200"
+            >
+              <div className="relative max-w-sm w-full bg-white rounded-3xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+                <img 
+                  src={viewingImage.src} 
+                  alt={viewingImage.title} 
+                  className="w-full h-80 object-cover"
+                />
+                <div className="p-4 flex justify-between items-center bg-white">
+                  <span className="font-semibold text-sm text-apple-text">{viewingImage.title}</span>
+                  <button 
+                    onClick={() => setViewingImage(null)}
+                    className="w-8 h-8 rounded-full bg-apple-card text-apple-text text-xs font-bold flex items-center justify-center"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
             </div>
           )}
