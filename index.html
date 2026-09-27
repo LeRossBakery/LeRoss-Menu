@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>LeRoss Bakery — Menú & Pedidos</title>
+  <title>LeRoss Bakery — Menú</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="apple-touch-icon" href="https://img.icons8.com/cotton/128/cupcake--v1.png">
@@ -70,6 +70,8 @@
       color: #1A1A1A;
     }
     input, select, textarea { font-size: 16px !important; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
 <body class="selection:bg-brand-pink/20">
@@ -86,18 +88,26 @@
       const [cart, setCart] = useState({});
       const [selectedCategory, setSelectedCategory] = useState("Todos");
       const [isCartOpen, setIsCartOpen] = useState(false);
+      const [lightboxImg, setLightboxImg] = useState(null);
       const [orderSubmitted, setOrderSubmitted] = useState(false);
       const [whatsAppUrl, setWhatsAppUrl] = useState("");
 
       // Formulario de Pedido
       const [customerName, setCustomerName] = useState("");
       const [customerPhone, setCustomerPhone] = useState("");
-      const [deliveryType, setDeliveryType] = useState("Pickup"); // Pickup o Delivery
+      const [deliveryType, setDeliveryType] = useState("Pickup");
       const [deliveryAddress, setDeliveryAddress] = useState("");
       const [deliveryDate, setDeliveryDate] = useState("");
       const [deliveryTime, setDeliveryTime] = useState("");
       const [specialNotes, setSpecialNotes] = useState("");
       const [isSubmitting, setIsSubmitting] = useState(false);
+
+      // Bloqueo automático de 36 horas de anticipación
+      const minDeliveryDate = useMemo(() => {
+        const d = new Date();
+        d.setHours(d.getHours() + 36);
+        return d.toISOString().split("T")[0];
+      }, []);
 
       useEffect(() => {
         if (!db) return;
@@ -196,7 +206,7 @@
           status: "Pendiente"
         };
 
-        // Redactar mensaje de WhatsApp
+        // Redacción de WhatsApp con aviso del 100% de anticipo
         let msg = `*¡Hola LeRoss Bakery! Deseo realizar un pedido* 🧁\n\n`;
         msg += `👤 *Cliente:* ${newOrder.customerName}\n`;
         msg += `📱 *WhatsApp:* ${newOrder.customerPhone}\n`;
@@ -213,12 +223,12 @@
         if (newOrder.specialNotes) {
           msg += `📝 *Nota especial:* ${newOrder.specialNotes}\n`;
         }
-        msg += `\n_Orden generada desde lerossbakery.github.io/LeRoss-Menu_`;
+        msg += `\n_Entiendo que se requiere el pago del 100% para reservar mi fecha._\n`;
+        msg += `_Orden enviada desde el menú online._`;
 
         const waLink = `https://wa.me/${WHATSAPP_PHONE}?text=${encodeURIComponent(msg)}`;
         setWhatsAppUrl(waLink);
 
-        // Guardar orden en Firebase para que LeRoss-Facturas la detecte
         try {
           if (db) {
             await db.collection("leross_app").doc("main_data").set({
@@ -226,7 +236,7 @@
             }, { merge: true });
           }
         } catch (err) {
-          console.error("Error guardando orden web en Firebase:", err);
+          console.error("Error guardando orden web en Firestore:", err);
         }
 
         setIsSubmitting(false);
@@ -234,38 +244,37 @@
       };
 
       return (
-        <div className="max-w-xl mx-auto min-h-screen pb-32">
+        <div className="max-w-xl mx-auto min-h-screen px-4 pt-8 pb-32">
           
-          {/* Barra Superior de Ubicación */}
-          <div className="bg-brand-charcoal text-white text-[11px] py-1.5 px-4 text-center font-semibold tracking-wide flex items-center justify-center space-x-1.5">
-            <span>📍</span>
-            <span>Santo Domingo Este, República Dominicana</span>
-            <span className="text-white/40">•</span>
-            <span className="text-brand-pink font-bold">Pedidos con 36h de anticipación</span>
-          </div>
-
-          {/* Encabezado Principal */}
-          <header className="px-5 pt-6 pb-4 border-b border-brand-border bg-white text-center space-y-1.5">
-            <div className="w-12 h-12 mx-auto rounded-2xl bg-brand-softPink flex items-center justify-center border border-brand-pink/30 shadow-xs mb-2">
-              <span className="text-2xl">🧁</span>
+          {/* Header Minimalista Apple */}
+          <header className="mb-6 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-brand-darkPink bg-brand-softPink px-3 py-1 rounded-full border border-brand-pink/30">
+                Santo Domingo Este
+              </span>
+              <span className="text-[11px] font-semibold text-gray-400">
+                Mínimo 36h de anticipación
+              </span>
             </div>
-            <h1 className="text-2xl font-black tracking-tight text-brand-charcoal">LeRoss Bakery</h1>
-            <p className="text-xs text-gray-500 font-medium">
-              Repostería artesanal horneada con amor · Santo Domingo Este
+            <h1 className="text-3xl font-black tracking-tight text-brand-charcoal pt-1">
+              LeRoss Bakery
+            </h1>
+            <p className="text-xs text-gray-500 font-medium leading-relaxed">
+              Repostería artesanal horneada por encargo en Santo Domingo Este.
             </p>
           </header>
 
-          {/* Selector de Categorías */}
+          {/* Categorías (Segmented Pills) */}
           {categories.length > 1 && (
-            <div className="px-4 py-3 flex space-x-2 overflow-x-auto no-scrollbar border-b border-brand-border/60 bg-white sticky top-0 z-20 backdrop-blur-md bg-white/95">
+            <div className="flex space-x-2 overflow-x-auto no-scrollbar pb-2 mb-6">
               {categories.map(cat => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                  className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
                     selectedCategory === cat
-                      ? "bg-brand-pink text-white shadow-xs"
-                      : "bg-brand-softBg text-gray-600 hover:bg-brand-softPink hover:text-brand-darkPink border border-brand-border"
+                      ? "bg-brand-charcoal text-white shadow-xs"
+                      : "bg-white text-gray-500 hover:text-brand-charcoal border border-brand-border"
                   }`}
                 >
                   {cat}
@@ -274,109 +283,135 @@
             </div>
           )}
 
-          {/* Catálogo de Postres */}
-          <main className="p-4 space-y-3">
+          {/* Catálogo de Postres (Cuadrícula Visual) */}
+          <main className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {filteredProducts.map(product => {
               const inCartQty = cart[product.id]?.quantity || 0;
 
               return (
                 <div 
                   key={product.id}
-                  className="bg-white p-3.5 rounded-3xl border border-brand-border flex items-center space-x-3.5 shadow-2xs hover:border-brand-pink/40 transition-all"
+                  className="bg-white rounded-3xl border border-brand-border overflow-hidden flex flex-col justify-between shadow-2xs hover:shadow-xs transition-all"
                 >
-                  {/* Foto del Postre (Optimizada Retina) */}
-                  <div className="w-24 h-24 rounded-2xl bg-brand-softBg overflow-hidden flex-shrink-0 border border-brand-border flex items-center justify-center">
+                  {/* Imagen (Abre Lightbox al tocar) */}
+                  <div 
+                    onClick={() => product.image && setLightboxImg(product.image)}
+                    className="relative w-full aspect-square bg-brand-softBg cursor-pointer overflow-hidden flex items-center justify-center group"
+                  >
                     {product.image ? (
                       <img 
                         src={product.image} 
                         alt={product.name} 
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         loading="lazy"
                       />
                     ) : (
-                      <span className="text-3xl opacity-40">🍰</span>
+                      <span className="text-4xl opacity-30">🧁</span>
+                    )}
+                    {product.image && (
+                      <span className="absolute bottom-2 right-2 bg-black/40 backdrop-blur-xs text-white text-[10px] px-2 py-0.5 rounded-full font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                        Ver foto ↗
+                      </span>
                     )}
                   </div>
 
-                  {/* Información */}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-sm text-brand-charcoal truncate">{product.name}</h3>
-                    {product.description && (
-                      <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5 leading-snug">
-                        {product.description}
-                      </p>
-                    )}
-                    <div className="mt-2 flex items-baseline space-x-1.5">
-                      <span className="font-black text-brand-darkPink text-base">
+                  {/* Info & Botón */}
+                  <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                    <div>
+                      <h3 className="font-bold text-sm text-brand-charcoal leading-snug">{product.name}</h3>
+                      {product.description && (
+                        <p className="text-[11px] text-gray-500 line-clamp-2 mt-1 leading-relaxed">
+                          {product.description}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="pt-2 flex items-center justify-between border-t border-brand-border/60">
+                      <span className="font-black text-brand-charcoal text-base">
                         {formatRD(product.price)}
                       </span>
-                    </div>
-                  </div>
 
-                  {/* Botón de Agregar / Control de Cantidad */}
-                  <div className="flex-shrink-0">
-                    {inCartQty === 0 ? (
-                      <button
-                        onClick={() => addToCart(product)}
-                        className="bg-brand-softPink hover:bg-brand-pink text-brand-darkPink hover:text-white font-black text-xs px-3.5 py-2 rounded-xl border border-brand-pink/30 transition-all shadow-2xs active:scale-95"
-                      >
-                        + Agregar
-                      </button>
-                    ) : (
-                      <div className="flex items-center space-x-1.5 bg-brand-softBg border border-brand-border rounded-xl p-1">
+                      {inCartQty === 0 ? (
                         <button
-                          onClick={() => updateQuantity(product.id, -1)}
-                          className="w-6 h-6 rounded-lg bg-white font-bold text-xs flex items-center justify-center text-gray-600 shadow-2xs"
+                          onClick={() => addToCart(product)}
+                          className="bg-brand-softPink hover:bg-brand-pink text-brand-darkPink hover:text-white font-bold text-xs px-3.5 py-1.5 rounded-xl border border-brand-pink/30 transition-all active:scale-95"
                         >
-                          -
+                          + Agregar
                         </button>
-                        <span className="text-xs font-black px-1 text-brand-charcoal">{inCartQty}</span>
-                        <button
-                          onClick={() => updateQuantity(product.id, 1)}
-                          className="w-6 h-6 rounded-lg bg-brand-pink font-bold text-xs flex items-center justify-center text-white shadow-2xs"
-                        >
-                          +
-                        </button>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="flex items-center space-x-2 bg-brand-softBg border border-brand-border rounded-xl p-1">
+                          <button
+                            onClick={() => updateQuantity(product.id, -1)}
+                            className="w-6 h-6 rounded-lg bg-white font-bold text-xs flex items-center justify-center text-gray-600 shadow-2xs"
+                          >
+                            -
+                          </button>
+                          <span className="text-xs font-black px-1 text-brand-charcoal">{inCartQty}</span>
+                          <button
+                            onClick={() => updateQuantity(product.id, 1)}
+                            className="w-6 h-6 rounded-lg bg-brand-pink font-bold text-xs flex items-center justify-center text-white shadow-2xs"
+                          >
+                            +
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
             })}
 
             {filteredProducts.length === 0 && (
-              <div className="text-center py-16 text-gray-400 text-xs">
+              <div className="col-span-full text-center py-16 text-gray-400 text-xs">
                 No hay productos disponibles en esta categoría en este momento.
               </div>
             )}
           </main>
 
-          {/* Barra Flotante de Carrito */}
+          {/* DOCK DINÁMICO FLOTANTE (ESTILO APPLE) */}
           {totalItemsCount > 0 && !isCartOpen && !orderSubmitted && (
-            <div className="fixed bottom-5 left-4 right-4 max-w-xl mx-auto z-40">
-              <button
+            <div className="fixed bottom-6 left-0 right-0 px-4 z-40 flex justify-center pointer-events-none">
+              <div 
                 onClick={() => setIsCartOpen(true)}
-                className="w-full bg-brand-charcoal hover:bg-black text-white p-4 rounded-3xl shadow-xl flex justify-between items-center transition-all active:scale-[0.99] border border-white/10"
+                className="pointer-events-auto bg-brand-charcoal/95 backdrop-blur-md text-white px-5 py-3.5 rounded-full shadow-2xl flex items-center space-x-4 cursor-pointer hover:scale-102 active:scale-98 transition-all border border-white/10"
               >
-                <div className="flex items-center space-x-2.5">
-                  <span className="w-6 h-6 rounded-full bg-brand-pink text-white text-xs font-black flex items-center justify-center">
+                <div className="flex items-center space-x-2">
+                  <span className="w-5 h-5 rounded-full bg-brand-pink text-white text-[11px] font-black flex items-center justify-center">
                     {totalItemsCount}
                   </span>
-                  <span className="text-xs font-bold uppercase tracking-wider">Ver mi pedido</span>
+                  <span className="text-xs font-bold">Ver Pedido</span>
                 </div>
-                <span className="text-base font-black">{formatRD(cartSubtotal)} →</span>
-              </button>
+                <div className="w-px h-4 bg-white/20"></div>
+                <span className="text-xs font-black text-brand-pink">{formatRD(cartSubtotal)} →</span>
+              </div>
             </div>
           )}
 
-          {/* MODAL / PANTALLA DE CHECKOUT */}
+          {/* LIGHTBOX DE IMAGEN */}
+          {lightboxImg && (
+            <div 
+              onClick={() => setLightboxImg(null)}
+              className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
+            >
+              <img 
+                src={lightboxImg} 
+                alt="Vista ampliada" 
+                className="max-w-full max-h-[85vh] rounded-3xl object-contain shadow-2xl" 
+              />
+              <span className="absolute top-6 right-6 text-white/80 font-bold text-sm bg-white/10 px-3 py-1.5 rounded-full">
+                Cerrar ✕
+              </span>
+            </div>
+          )}
+
+          {/* CHECKOUT MODAL */}
           {isCartOpen && !orderSubmitted && (
             <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
-              <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto p-5 space-y-4 shadow-2xl animate-in slide-in-from-bottom duration-200">
+              <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto p-6 space-y-5 shadow-2xl animate-in slide-in-from-bottom duration-200">
                 
                 <div className="flex justify-between items-center border-b border-brand-border pb-3">
                   <div>
-                    <h2 className="text-base font-bold text-brand-charcoal">Completar Pedido</h2>
+                    <h2 className="text-base font-bold text-brand-charcoal">Resumen de tu Pedido</h2>
                     <span className="text-[11px] text-gray-400">LeRoss Bakery · Santo Domingo Este</span>
                   </div>
                   <button
@@ -387,7 +422,7 @@
                   </button>
                 </div>
 
-                {/* Resumen de Postres en Carrito */}
+                {/* Items */}
                 <div className="divide-y divide-brand-border/60">
                   {cartItems.map(it => (
                     <div key={it.product.id} className="py-2.5 flex justify-between items-center text-xs">
@@ -405,14 +440,14 @@
                       </div>
                     </div>
                   ))}
-                  <div className="pt-2 flex justify-between items-baseline font-black text-sm text-brand-charcoal">
+                  <div className="pt-3 flex justify-between items-baseline font-black text-sm text-brand-charcoal">
                     <span>Total Estimado:</span>
-                    <span className="text-base text-brand-darkPink">{formatRD(cartSubtotal)}</span>
+                    <span className="text-lg text-brand-darkPink">{formatRD(cartSubtotal)}</span>
                   </div>
                 </div>
 
-                {/* Formulario de Entrega & Contacto */}
-                <form onSubmit={handleSubmitOrder} className="space-y-3 pt-2">
+                {/* Formulario */}
+                <form onSubmit={handleSubmitOrder} className="space-y-3 pt-1">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[11px] font-semibold text-gray-500 block mb-1">Tu Nombre *</label>
@@ -438,9 +473,8 @@
                     </div>
                   </div>
 
-                  {/* Modalidad de Entrega */}
                   <div>
-                    <label className="text-[11px] font-semibold text-gray-500 block mb-1">Tipo de Entrega</label>
+                    <label className="text-[11px] font-semibold text-gray-500 block mb-1">Modalidad de Entrega</label>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
@@ -451,7 +485,7 @@
                             : "bg-brand-softBg text-gray-600 border-brand-border"
                         }`}
                       >
-                        🚗 Retiro (SDE)
+                        🚗 Retiro en SDE
                       </button>
                       <button
                         type="button"
@@ -487,9 +521,10 @@
                       <input
                         type="date"
                         required
+                        min={minDeliveryDate}
                         value={deliveryDate}
                         onChange={e => setDeliveryDate(e.target.value)}
-                        className="w-full bg-brand-softBg border border-brand-border rounded-xl px-3 py-2 text-xs outline-none focus:border-brand-pink"
+                        className="w-full bg-brand-softBg border border-brand-border rounded-xl px-3 py-2 text-xs outline-none focus:border-brand-pink font-semibold"
                       />
                     </div>
                     <div>
@@ -507,20 +542,24 @@
                     <label className="text-[11px] font-semibold text-gray-500 block mb-1">Nota Especial / Dedicatoria</label>
                     <textarea
                       rows="2"
-                      placeholder="Ej. Escribir 'Felicidades Mamá', lazo de color especial..."
+                      placeholder="Ej. 'Felicidades Mamá', lazo de color especial..."
                       value={specialNotes}
                       onChange={e => setSpecialNotes(e.target.value)}
                       className="w-full bg-brand-softBg border border-brand-border rounded-xl px-3 py-2 text-xs outline-none focus:border-brand-pink"
                     ></textarea>
                   </div>
 
+                  {/* Nota de Pago 100% */}
+                  <div className="p-3 bg-brand-softPink/60 rounded-2xl border border-brand-pink/30 text-[11px] text-brand-darkPink leading-relaxed">
+                    💡 <b>Importante:</b> Al ser repostería personalizada, la fecha se reserva con el <b>100% de pago por adelantado</b> vía transferencia.
+                  </div>
+
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl shadow-lg active:scale-[0.99] transition-all flex items-center justify-center space-x-2 text-sm"
+                    className="w-full bg-brand-charcoal hover:bg-black text-white font-bold py-3.5 rounded-2xl shadow-lg active:scale-[0.99] transition-all flex items-center justify-center space-x-2 text-xs uppercase tracking-wider"
                   >
-                    <span>💬</span>
-                    <span>{isSubmitting ? "Procesando..." : "Confirmar por WhatsApp"}</span>
+                    <span>{isSubmitting ? "Procesando..." : "Confirmar Pedido por WhatsApp"}</span>
                   </button>
                 </form>
 
@@ -528,23 +567,23 @@
             </div>
           )}
 
-          {/* PANTALLA FINAL: CONFIRMACIÓN Y BOTÓN WHATSAPP */}
+          {/* CONFIRMACIÓN FINAL */}
           {orderSubmitted && (
             <div className="fixed inset-0 z-50 bg-brand-softBg flex items-center justify-center p-5">
-              <div className="bg-white w-full max-w-md p-6 rounded-3xl border border-brand-border text-center space-y-4 shadow-xl animate-in zoom-in-95 duration-200">
-                <div className="w-16 h-16 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-3xl">
+              <div className="bg-white w-full max-w-md p-6 rounded-3xl border border-brand-border text-center space-y-4 shadow-xl">
+                <div className="w-14 h-14 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl">
                   ✓
                 </div>
-                <h2 className="text-xl font-black text-brand-charcoal">¡Pedido Casi Listo!</h2>
+                <h2 className="text-xl font-black text-brand-charcoal">¡Pedido Registrado!</h2>
                 <p className="text-xs text-gray-500 leading-relaxed">
-                  Para apartar tu fecha y coordinar el pago, pulsa el botón abajo para enviar el detalle de tu orden directamente a nuestro WhatsApp oficial:
+                  Para apartar tu fecha y enviarte los datos de transferencia, pulsa el botón para enviar los detalles directamente a nuestro WhatsApp oficial:
                 </p>
 
                 <a
                   href={whatsAppUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-4 rounded-2xl shadow-lg flex items-center justify-center space-x-2 text-sm transition-all block"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl shadow-lg flex items-center justify-center space-x-2 text-xs uppercase tracking-wider transition-all block"
                 >
                   <span>📲 Abrir WhatsApp con LeRoss Bakery</span>
                 </a>
@@ -557,7 +596,7 @@
                   }}
                   className="text-xs text-gray-400 font-semibold hover:text-brand-charcoal pt-2"
                 >
-                  Volver al menú principal
+                  Volver al menú
                 </button>
               </div>
             </div>
