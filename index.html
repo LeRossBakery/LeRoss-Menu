@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>LeRoss Bakery</title>
+  <title>LeRoss Bakery — Menú & Pedidos</title>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="apple-touch-icon" href="https://img.icons8.com/cotton/128/cupcake--v1.png">
@@ -22,13 +22,14 @@
       theme: {
         extend: {
           colors: {
-            apple: {
-              card: '#FBFBFD',
-              border: '#E5E5EA',
-              text: '#1D1D1F',
-              subtext: '#86868B',
+            brand: {
               pink: '#E5839B',
-              softPink: '#FFF0F4'
+              darkPink: '#D46B84',
+              softPink: '#FFF0F4',
+              softBg: '#FBF8F9',
+              charcoal: '#1A1A1A',
+              border: '#EFE5E9',
+              card: '#FFFFFF'
             }
           }
         }
@@ -63,535 +64,463 @@
 
   <style>
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
       -webkit-font-smoothing: antialiased;
-      background-color: #FFFFFF;
-      color: #1D1D1F;
+      background-color: #FBF8F9;
+      color: #1A1A1A;
     }
-    input, textarea { font-size: 16px !important; }
-    button { touch-action: manipulation; }
+    input, select, textarea { font-size: 16px !important; }
   </style>
 </head>
-<body class="selection:bg-apple-pink/20">
+<body class="selection:bg-brand-pink/20">
   <div id="root"></div>
 
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
 
-    const formatRD = (val) => "RD$ " + Number(val || 0).toLocaleString("es-DO", { minimumFractionDigits: 0 });
+    const WHATSAPP_PHONE = "18494411315";
+    const formatRD = (val) => "RD$ " + Number(val || 0).toLocaleString("es-DO", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-    // Máscara RD automática en la web de pedidos
-    const formatPhoneInput = (val) => {
-      if (!val) return "";
-      let digits = String(val).replace(/\D/g, "");
-      if (digits.startsWith("1") && digits.length > 10) {
-        digits = digits.slice(1);
-      }
-      digits = digits.slice(0, 10);
-      if (digits.length <= 3) return digits;
-      if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
-      return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
-    };
-
-    function CustomerApp() {
-      const [business, setBusiness] = useState({
-        name: "LeRoss Bakery",
-        customLogo: "",
-        phone: "849-441-1315",
-        instagram: "@rossynellys"
-      });
-
-      const [products, setProducts] = useState([
-        { id: "p1", name: "Flan Tradicional Casero", price: 1200, image: "" },
-        { id: "p2", name: "Caja Mini Brownies (12 uds)", price: 650, image: "" },
-        { id: "p3", name: "Tres Leches Clásico Familiar", price: 1500, image: "" },
-        { id: "p4", name: "Pudín Dominicano Decorado", price: 2400, image: "" }
-      ]);
-
+    function MenuApp() {
+      const [products, setProducts] = useState([]);
       const [cart, setCart] = useState({});
-      const [showCheckout, setShowCheckout] = useState(false);
-      const [isSending, setIsSending] = useState(false);
-      const [confirmedOrder, setConfirmedOrder] = useState(null);
-      const [viewingImage, setViewingImage] = useState(null);
+      const [selectedCategory, setSelectedCategory] = useState("Todos");
+      const [isCartOpen, setIsCartOpen] = useState(false);
+      const [orderSubmitted, setOrderSubmitted] = useState(false);
+      const [whatsAppUrl, setWhatsAppUrl] = useState("");
 
-      const minDateAllowed = useMemo(() => {
-        const d = new Date(Date.now() + 36 * 60 * 60 * 1000);
-        return d.toISOString().split("T")[0];
-      }, []);
-
-      const [customerData, setCustomerData] = useState({
-        name: "",
-        phone: "",
-        deliveryDate: "",
-        notes: ""
-      });
+      // Formulario de Pedido
+      const [customerName, setCustomerName] = useState("");
+      const [customerPhone, setCustomerPhone] = useState("");
+      const [deliveryType, setDeliveryType] = useState("Pickup"); // Pickup o Delivery
+      const [deliveryAddress, setDeliveryAddress] = useState("");
+      const [deliveryDate, setDeliveryDate] = useState("");
+      const [deliveryTime, setDeliveryTime] = useState("");
+      const [specialNotes, setSpecialNotes] = useState("");
+      const [isSubmitting, setIsSubmitting] = useState(false);
 
       useEffect(() => {
         if (!db) return;
         const unsubscribe = db.collection("leross_app").doc("main_data").onSnapshot(
           (doc) => {
             if (doc.exists) {
-              const data = doc.data();
-              if (data.business) setBusiness(data.business);
-              if (data.products && data.products.length > 0) setProducts(data.products);
+              const res = doc.data();
+              setProducts(res.products || []);
             }
           },
-          (err) => console.error("Error catálogo:", err)
+          (err) => console.error("Firestore read error:", err)
         );
         return () => unsubscribe();
       }, []);
 
-      const updateQuantity = (prodId, delta) => {
+      const categories = useMemo(() => {
+        const set = new Set(["Todos"]);
+        products.forEach(p => {
+          if (p.category) set.add(p.category);
+        });
+        return Array.from(set);
+      }, [products]);
+
+      const filteredProducts = useMemo(() => {
+        return products.filter(p => {
+          if (p.available === false) return false;
+          if (selectedCategory === "Todos") return true;
+          return p.category === selectedCategory;
+        });
+      }, [products, selectedCategory]);
+
+      const addToCart = (product) => {
         setCart(prev => {
-          const current = Number(prev[prodId] || 0);
-          const next = current + delta;
-          const updated = { ...prev };
-          if (next <= 0) {
-            delete updated[prodId];
-          } else {
-            updated[prodId] = next;
-          }
-          return updated;
+          const currentQty = prev[product.id]?.quantity || 0;
+          return {
+            ...prev,
+            [product.id]: {
+              product,
+              quantity: currentQty + 1
+            }
+          };
         });
       };
 
-      const cartItems = useMemo(() => {
-        return Object.keys(cart).map(id => {
-          const prod = products.find(p => p.id === id);
-          const qty = cart[id];
-          return prod ? { ...prod, quantity: qty, total: prod.price * qty } : null;
-        }).filter(Boolean);
-      }, [cart, products]);
+      const updateQuantity = (productId, delta) => {
+        setCart(prev => {
+          const current = prev[productId];
+          if (!current) return prev;
+          const newQty = current.quantity + delta;
+          if (newQty <= 0) {
+            const copy = { ...prev };
+            delete copy[productId];
+            return copy;
+          }
+          return {
+            ...prev,
+            [productId]: {
+              ...current,
+              quantity: newQty
+            }
+          };
+        });
+      };
 
-      const cartTotal = useMemo(() => {
-        return cartItems.reduce((acc, item) => acc + item.total, 0);
-      }, [cartItems]);
+      const cartItems = Object.values(cart);
+      const totalItemsCount = cartItems.reduce((acc, it) => acc + it.quantity, 0);
+      const cartSubtotal = cartItems.reduce((acc, it) => acc + (it.product.price * it.quantity), 0);
 
-      const totalItemCount = useMemo(() => {
-        return Object.values(cart).reduce((acc, qty) => acc + qty, 0);
-      }, [cart]);
-
-      const handlePlaceOrder = async (e) => {
+      const handleSubmitOrder = async (e) => {
         e.preventDefault();
-        if (!customerData.name.trim() || !customerData.phone.trim()) {
-          alert("Por favor indica tu nombre y WhatsApp.");
-          return;
-        }
-        if (!customerData.deliveryDate) {
-          alert("Por favor selecciona una fecha de entrega.");
-          return;
-        }
+        if (cartItems.length === 0) return alert("Tu carrito está vacío.");
+        if (!customerName.trim()) return alert("Por favor ingresa tu nombre.");
+        if (!customerPhone.trim()) return alert("Por favor ingresa tu WhatsApp.");
+        if (!deliveryDate) return alert("Selecciona la fecha de entrega.");
 
-        setIsSending(true);
-        const orderCode = "LR-" + Math.floor(1000 + Math.random() * 9000);
+        setIsSubmitting(true);
 
-        const draftItems = cartItems.map((item, idx) => ({
-          id: Date.now() + idx,
-          name: item.name,
-          quantity: item.quantity,
-          unitPrice: item.price,
-          discountType: "amount",
-          discountVal: 0,
-          exempt: false,
-          lineSubtotal: item.total,
-          lineDiscount: 0,
-          lineTotal: item.total
-        }));
-
-        const cleanCustomerPhone = formatPhoneInput(customerData.phone);
-
-        const newOrderRecord = {
-          id: "web_" + Date.now(),
-          orderNumber: orderCode,
-          customerName: customerData.name.trim(),
-          customerPhone: cleanCustomerPhone,
-          date: new Date().toISOString().split("T")[0],
-          deliveryDate: customerData.deliveryDate,
-          notes: customerData.notes || "",
-          items: draftItems,
-          orderDiscountType: "amount",
-          orderDiscountVal: 0,
-          paymentStatus: "Pendiente",
-          paymentMethod: "Transferencia (100% total)",
-          approvalStatus: "Pendiente",
-          rejectionReason: "",
-          state: "Borrador",
-          calculation: {
-            lines: draftItems,
-            subtotal: cartTotal,
-            orderDiscount: 0,
-            discountedSubtotal: cartTotal,
-            itbis: 0,
-            total: cartTotal
-          },
-          createdAt: new Date().toISOString()
+        const newOrder = {
+          id: "WEB-" + Math.floor(1000 + Math.random() * 9000),
+          createdAt: new Date().toISOString(),
+          customerName: customerName.trim(),
+          customerPhone: customerPhone.trim(),
+          deliveryType,
+          deliveryAddress: deliveryType === "Delivery" ? deliveryAddress.trim() : "Retiro en Santo Domingo Este",
+          deliveryDate,
+          deliveryTime,
+          specialNotes: specialNotes.trim(),
+          items: cartItems.map(it => ({
+            id: it.product.id,
+            name: it.product.name,
+            quantity: it.quantity,
+            price: it.product.price,
+            total: it.product.price * it.quantity
+          })),
+          subtotal: cartSubtotal,
+          status: "Pendiente"
         };
 
+        // Redactar mensaje de WhatsApp
+        let msg = `*¡Hola LeRoss Bakery! Deseo realizar un pedido* 🧁\n\n`;
+        msg += `👤 *Cliente:* ${newOrder.customerName}\n`;
+        msg += `📱 *WhatsApp:* ${newOrder.customerPhone}\n`;
+        msg += `📦 *Modalidad:* ${newOrder.deliveryType === 'Pickup' ? 'Retiro en Santo Domingo Este' : 'Envío a Domicilio'}\n`;
+        if (newOrder.deliveryType === 'Delivery' && newOrder.deliveryAddress) {
+          msg += `📍 *Dirección:* ${newOrder.deliveryAddress}\n`;
+        }
+        msg += `📅 *Fecha:* ${newOrder.deliveryDate} ${newOrder.deliveryTime ? '• ' + newOrder.deliveryTime : ''}\n\n`;
+        msg += `*Detalle del Pedido:*\n`;
+        newOrder.items.forEach(it => {
+          msg += `• ${it.quantity}x ${it.name} — ${formatRD(it.total)}\n`;
+        });
+        msg += `\n💰 *Total Estimado:* ${formatRD(newOrder.subtotal)}\n`;
+        if (newOrder.specialNotes) {
+          msg += `📝 *Nota especial:* ${newOrder.specialNotes}\n`;
+        }
+        msg += `\n_Orden generada desde lerossbakery.github.io/LeRoss-Menu_`;
+
+        const waLink = `https://wa.me/${WHATSAPP_PHONE}?text=${encodeURIComponent(msg)}`;
+        setWhatsAppUrl(waLink);
+
+        // Guardar orden en Firebase para que LeRoss-Facturas la detecte
         try {
           if (db) {
-            await db.collection("leross_app").doc("main_data").update({
-              drafts: firebase.firestore.FieldValue.arrayUnion(newOrderRecord)
-            });
+            await db.collection("leross_app").doc("main_data").set({
+              webOrders: firebase.firestore.FieldValue.arrayUnion(newOrder)
+            }, { merge: true });
           }
         } catch (err) {
-          console.error("Error guardando orden:", err);
+          console.error("Error guardando orden web en Firebase:", err);
         }
 
-        const itemsList = cartItems.map(i => `• ${i.quantity}x ${i.name} — ${formatRD(i.total)}`).join("\n");
-        const waMsg = `🧁 *Solicitud de Pedido #${orderCode}*\n\n` +
-          `*Cliente:* ${customerData.name.trim()}\n` +
-          `*WhatsApp:* ${cleanCustomerPhone}\n` +
-          `*Fecha solicitada:* ${customerData.deliveryDate}\n` +
-          (customerData.notes ? `*Detalles:* ${customerData.notes}\n\n` : '\n') +
-          `*Orden solicitada:*\n${itemsList}\n\n` +
-          `*Total a Pagar (100%):* ${formatRD(cartTotal)}\n\n` +
-          `¿Me confirman disponibilidad para transferir el pago total y reservar el cupo?`;
-
-        const cleanDestPhone = (business.phone || "849-441-1315").replace(/\D/g, "");
-        const targetPhone = cleanDestPhone.length === 10 ? "1" + cleanDestPhone : cleanDestPhone;
-        const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(waMsg)}`;
-
-        setConfirmedOrder({
-          ...newOrderRecord,
-          itemsListText: itemsList,
-          waUrl
-        });
-
-        setIsSending(false);
-        setShowCheckout(false);
-        setCart({});
-
-        window.open(waUrl, "_blank");
+        setIsSubmitting(false);
+        setOrderSubmitted(true);
       };
 
-      if (confirmedOrder) {
-        return (
-          <div className="max-w-lg mx-auto min-h-screen px-6 pt-12 pb-20 flex flex-col justify-between">
-            <div className="space-y-6">
-              <div className="flex items-center space-x-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
-                <span className="text-xs font-semibold uppercase tracking-wider text-amber-700">En Revisión</span>
-              </div>
-
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-apple-text">Solicitud Recibida</h1>
-                <p className="text-sm text-apple-subtext mt-1">
-                  Orden <span className="font-semibold text-apple-text">{confirmedOrder.orderNumber}</span> registrada para {confirmedOrder.customerName}.
-                </p>
-              </div>
-
-              <div className="p-5 bg-apple-card border border-apple-border rounded-2xl space-y-4">
-                <div className="flex justify-between items-center pb-3 border-b border-apple-border/50 text-xs">
-                  <span className="text-apple-subtext">Fecha Solicitada</span>
-                  <span className="font-medium text-apple-text">{confirmedOrder.deliveryDate}</span>
-                </div>
-
-                <div className="space-y-1.5 text-xs text-apple-subtext">
-                  {confirmedOrder.items.map((it, idx) => (
-                    <div key={idx} className="flex justify-between">
-                      <span>{it.quantity}x {it.name}</span>
-                      <span className="text-apple-text font-medium">{formatRD(it.lineTotal)}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="pt-3 border-t border-apple-border/50 flex justify-between items-center text-sm font-semibold">
-                  <span className="text-apple-text">Total a Pagar (100%)</span>
-                  <span className="text-apple-pink text-base">{formatRD(confirmedOrder.calculation.total)}</span>
-                </div>
-              </div>
-
-              <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl space-y-1.5 text-xs text-amber-900">
-                <span className="font-semibold block">⏳ Reserva de Cupo (Válida por 3 horas)</span>
-                <p className="text-[11.5px] leading-relaxed text-amber-800">
-                  Al confirmar la disponibilidad de tu fecha, dispones de <b>3 horas</b> para transferir el 100% del pago. Transcurrido ese plazo, el cupo en horno se libera para otro pedido.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-6">
-              <a
-                href={confirmedOrder.waUrl}
-                target="_blank"
-                className="w-full bg-[#1D1D1F] hover:bg-black text-white font-medium py-3.5 rounded-2xl shadow-lg text-sm text-center block tracking-tight active:scale-[0.99] transition-all"
-              >
-                Abrir WhatsApp con LeRoss Bakery
-              </a>
-              <button
-                onClick={() => setConfirmedOrder(null)}
-                className="w-full text-xs text-apple-subtext hover:text-apple-text py-2"
-              >
-                ← Volver al catálogo principal
-              </button>
-            </div>
-          </div>
-        );
-      }
-
       return (
-        <div className="max-w-lg mx-auto min-h-screen px-6 pt-10 pb-32">
+        <div className="max-w-xl mx-auto min-h-screen pb-32">
           
-          {/* Header */}
-          <header className="flex items-center justify-between pb-8 border-b border-apple-border/40">
-            <div className="flex items-center space-x-3.5">
-              {business.customLogo ? (
-                <img 
-                  src={business.customLogo} 
-                  alt="Logo" 
-                  className="max-h-16 max-w-[130px] w-auto h-auto object-contain rounded-xl" 
-                />
-              ) : (
-                <div className="w-14 h-14 rounded-2xl bg-apple-pink flex items-center justify-center text-white text-sm font-bold shadow-sm">
-                  LeRoss
-                </div>
-              )}
-              <div>
-                <h1 className="text-lg font-semibold tracking-tight text-apple-text">{business.name}</h1>
-                <p className="text-[12px] text-apple-subtext font-normal">Santo Domingo, D.N.</p>
-              </div>
+          {/* Barra Superior de Ubicación */}
+          <div className="bg-brand-charcoal text-white text-[11px] py-1.5 px-4 text-center font-semibold tracking-wide flex items-center justify-center space-x-1.5">
+            <span>📍</span>
+            <span>Santo Domingo Este, República Dominicana</span>
+            <span className="text-white/40">•</span>
+            <span className="text-brand-pink font-bold">Pedidos con 36h de anticipación</span>
+          </div>
+
+          {/* Encabezado Principal */}
+          <header className="px-5 pt-6 pb-4 border-b border-brand-border bg-white text-center space-y-1.5">
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-brand-softPink flex items-center justify-center border border-brand-pink/30 shadow-xs mb-2">
+              <span className="text-2xl">🧁</span>
             </div>
-            {business.instagram && (
-              <a 
-                href={`https://instagram.com/${business.instagram.replace('@','')}`} 
-                target="_blank" 
-                className="text-xs text-apple-subtext hover:text-apple-text tracking-tight transition-colors py-1 px-2.5 rounded-full border border-apple-border/60"
-              >
-                {business.instagram}
-              </a>
-            )}
+            <h1 className="text-2xl font-black tracking-tight text-brand-charcoal">LeRoss Bakery</h1>
+            <p className="text-xs text-gray-500 font-medium">
+              Repostería artesanal horneada con amor · Santo Domingo Este
+            </p>
           </header>
 
-          {/* Titular en una sola línea */}
-          <div className="pt-8 pb-6">
-            <p className="text-xs uppercase tracking-widest text-apple-subtext font-medium mb-1.5">Repostería Artesanal</p>
-            <h2 
-              className="font-semibold tracking-tight text-apple-text whitespace-nowrap overflow-hidden text-ellipsis leading-tight"
-              style={{ fontSize: "clamp(15px, 4.3vw, 22px)" }}
-            >
-              Postres hechos en casa, horneados con amor.
-            </h2>
-            <p className="text-sm text-apple-subtext font-normal mt-1 leading-relaxed">
-              Ideales para celebrar, compartir y disfrutar.
-            </p>
-            <div className="mt-3.5 inline-flex items-center space-x-1.5 px-3 py-1 bg-apple-card border border-apple-border rounded-full text-[11px] text-apple-subtext">
-              <span>⏱️ Pedidos con un mínimo de 36 horas de anticipación</span>
+          {/* Selector de Categorías */}
+          {categories.length > 1 && (
+            <div className="px-4 py-3 flex space-x-2 overflow-x-auto no-scrollbar border-b border-brand-border/60 bg-white sticky top-0 z-20 backdrop-blur-md bg-white/95">
+              {categories.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                    selectedCategory === cat
+                      ? "bg-brand-pink text-white shadow-xs"
+                      : "bg-brand-softBg text-gray-600 hover:bg-brand-softPink hover:text-brand-darkPink border border-brand-border"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
             </div>
-          </div>
+          )}
 
-          {/* Menú de Postres */}
-          <main className="divide-y divide-apple-border/50">
-            {products.map(prod => {
-              const qty = cart[prod.id] || 0;
-              const hasMultiple = qty > 1;
+          {/* Catálogo de Postres */}
+          <main className="p-4 space-y-3">
+            {filteredProducts.map(product => {
+              const inCartQty = cart[product.id]?.quantity || 0;
 
               return (
-                <div key={prod.id} className="py-4.5 flex items-center justify-between">
-                  <div className="flex items-center space-x-3.5 pr-2 flex-1">
-                    {prod.image ? (
-                      <div 
-                        onClick={() => setViewingImage({ src: prod.image, title: prod.name })}
-                        className="w-20 h-20 rounded-2xl overflow-hidden border border-apple-border/70 flex-shrink-0 cursor-pointer relative group bg-apple-card shadow-xs"
-                      >
-                        <img 
-                          src={prod.image} 
-                          alt={prod.name} 
-                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        />
-                        <span className="absolute bottom-1 right-1 bg-black/50 text-white rounded-md text-[9px] px-1 py-0.2 backdrop-blur-xs">
-                          🔍
-                        </span>
-                      </div>
+                <div 
+                  key={product.id}
+                  className="bg-white p-3.5 rounded-3xl border border-brand-border flex items-center space-x-3.5 shadow-2xs hover:border-brand-pink/40 transition-all"
+                >
+                  {/* Foto del Postre (Optimizada Retina) */}
+                  <div className="w-24 h-24 rounded-2xl bg-brand-softBg overflow-hidden flex-shrink-0 border border-brand-border flex items-center justify-center">
+                    {product.image ? (
+                      <img 
+                        src={product.image} 
+                        alt={product.name} 
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
                     ) : (
-                      <div className="w-20 h-20 rounded-2xl bg-apple-card border border-apple-border/50 flex flex-col items-center justify-center text-apple-subtext text-xl flex-shrink-0">
-                        <span>🧁</span>
-                      </div>
+                      <span className="text-3xl opacity-40">🍰</span>
                     )}
+                  </div>
 
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-[15px] font-semibold text-apple-text tracking-tight leading-snug truncate">{prod.name}</h3>
-                      <p className="text-sm font-medium text-apple-subtext mt-0.5">{formatRD(prod.price)}</p>
-                      
-                      {hasMultiple && (
-                        <p className="text-xs font-semibold text-apple-pink mt-1">
-                          Total: {formatRD(prod.price * qty)} <span className="text-[10px] text-apple-subtext font-normal">({qty} uds)</span>
-                        </p>
-                      )}
+                  {/* Información */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-bold text-sm text-brand-charcoal truncate">{product.name}</h3>
+                    {product.description && (
+                      <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5 leading-snug">
+                        {product.description}
+                      </p>
+                    )}
+                    <div className="mt-2 flex items-baseline space-x-1.5">
+                      <span className="font-black text-brand-darkPink text-base">
+                        {formatRD(product.price)}
+                      </span>
                     </div>
                   </div>
 
-                  <div className="flex-shrink-0 pl-2">
-                    {qty > 0 ? (
-                      <div className="flex items-center bg-apple-card border border-apple-border rounded-full p-1 space-x-2.5 shadow-sm">
-                        <button 
-                          type="button"
-                          onClick={() => updateQuantity(prod.id, -1)}
-                          className="w-8 h-8 rounded-full bg-white text-apple-text text-base font-bold flex items-center justify-center shadow-xs active:scale-90 transition-transform"
-                          aria-label="Restar"
+                  {/* Botón de Agregar / Control de Cantidad */}
+                  <div className="flex-shrink-0">
+                    {inCartQty === 0 ? (
+                      <button
+                        onClick={() => addToCart(product)}
+                        className="bg-brand-softPink hover:bg-brand-pink text-brand-darkPink hover:text-white font-black text-xs px-3.5 py-2 rounded-xl border border-brand-pink/30 transition-all shadow-2xs active:scale-95"
+                      >
+                        + Agregar
+                      </button>
+                    ) : (
+                      <div className="flex items-center space-x-1.5 bg-brand-softBg border border-brand-border rounded-xl p-1">
+                        <button
+                          onClick={() => updateQuantity(product.id, -1)}
+                          className="w-6 h-6 rounded-lg bg-white font-bold text-xs flex items-center justify-center text-gray-600 shadow-2xs"
                         >
-                          −
+                          -
                         </button>
-                        <span className="text-xs font-semibold text-apple-text min-w-[14px] text-center select-none">{qty}</span>
-                        <button 
-                          type="button"
-                          onClick={() => updateQuantity(prod.id, 1)}
-                          className="w-8 h-8 rounded-full bg-white text-apple-text text-base font-bold flex items-center justify-center shadow-xs active:scale-90 transition-transform"
-                          aria-label="Sumar"
+                        <span className="text-xs font-black px-1 text-brand-charcoal">{inCartQty}</span>
+                        <button
+                          onClick={() => updateQuantity(product.id, 1)}
+                          className="w-6 h-6 rounded-lg bg-brand-pink font-bold text-xs flex items-center justify-center text-white shadow-2xs"
                         >
                           +
                         </button>
                       </div>
-                    ) : (
-                      <button 
-                        type="button"
-                        onClick={() => updateQuantity(prod.id, 1)}
-                        className="h-9 px-3.5 rounded-full bg-apple-card hover:bg-apple-border/50 text-apple-text text-xs font-semibold flex items-center space-x-1 transition-colors active:scale-95 border border-apple-border/60"
-                      >
-                        <span>+</span>
-                        <span>Agregar</span>
-                      </button>
                     )}
                   </div>
                 </div>
               );
             })}
+
+            {filteredProducts.length === 0 && (
+              <div className="text-center py-16 text-gray-400 text-xs">
+                No hay productos disponibles en esta categoría en este momento.
+              </div>
+            )}
           </main>
 
-          {/* Floating Pill Dock */}
-          {totalItemCount > 0 && !showCheckout && (
-            <div className="fixed bottom-6 left-0 right-0 max-w-lg mx-auto px-6 z-30">
-              <button 
-                type="button"
-                onClick={() => setShowCheckout(true)}
-                className="w-full bg-[#1D1D1F]/95 hover:bg-black backdrop-blur-xl text-white py-3.5 px-6 rounded-full shadow-2xl flex items-center justify-between active:scale-[0.98] transition-all"
+          {/* Barra Flotante de Carrito */}
+          {totalItemsCount > 0 && !isCartOpen && !orderSubmitted && (
+            <div className="fixed bottom-5 left-4 right-4 max-w-xl mx-auto z-40">
+              <button
+                onClick={() => setIsCartOpen(true)}
+                className="w-full bg-brand-charcoal hover:bg-black text-white p-4 rounded-3xl shadow-xl flex justify-between items-center transition-all active:scale-[0.99] border border-white/10"
               >
-                <div className="flex items-center space-x-2 text-xs font-medium tracking-tight">
-                  <span className="bg-white/20 px-2 py-0.5 rounded-full text-[11px] font-semibold">{totalItemCount}</span>
-                  <span>{totalItemCount === 1 ? 'postre' : 'postres'}</span>
+                <div className="flex items-center space-x-2.5">
+                  <span className="w-6 h-6 rounded-full bg-brand-pink text-white text-xs font-black flex items-center justify-center">
+                    {totalItemsCount}
+                  </span>
+                  <span className="text-xs font-bold uppercase tracking-wider">Ver mi pedido</span>
                 </div>
-                <div className="flex items-center space-x-2 text-sm font-medium tracking-tight">
-                  <span>{formatRD(cartTotal)}</span>
-                  <span className="text-white/60">·</span>
-                  <span className="font-semibold">Continuar →</span>
-                </div>
+                <span className="text-base font-black">{formatRD(cartSubtotal)} →</span>
               </button>
             </div>
           )}
 
-          {/* Checkout Sheet */}
-          {showCheckout && (
-            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-end justify-center p-0 transition-opacity">
-              <div className="bg-white w-full max-w-lg rounded-t-[32px] p-7 space-y-5 max-h-[92vh] overflow-y-auto animate-in slide-in-from-bottom duration-300">
+          {/* MODAL / PANTALLA DE CHECKOUT */}
+          {isCartOpen && !orderSubmitted && (
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+              <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto p-5 space-y-4 shadow-2xl animate-in slide-in-from-bottom duration-200">
                 
-                <div className="flex justify-between items-center pb-2">
-                  <h3 className="text-lg font-semibold tracking-tight text-apple-text">Detalles del Pedido</h3>
-                  <button 
-                    type="button"
-                    onClick={() => setShowCheckout(false)} 
-                    className="w-8 h-8 rounded-full bg-apple-card flex items-center justify-center text-apple-subtext text-xs"
+                <div className="flex justify-between items-center border-b border-brand-border pb-3">
+                  <div>
+                    <h2 className="text-base font-bold text-brand-charcoal">Completar Pedido</h2>
+                    <span className="text-[11px] text-gray-400">LeRoss Bakery · Santo Domingo Este</span>
+                  </div>
+                  <button
+                    onClick={() => setIsCartOpen(false)}
+                    className="w-7 h-7 rounded-full bg-brand-softBg text-gray-500 font-bold flex items-center justify-center text-xs"
                   >
                     ✕
                   </button>
                 </div>
 
-                <div className="p-4 bg-apple-card border border-apple-border rounded-2xl space-y-3 text-xs">
-                  <div className="divide-y divide-apple-border/50">
-                    {cartItems.map(item => (
-                      <div key={item.id} className="py-2.5 flex justify-between items-center">
-                        <div className="pr-2">
-                          <p className="font-medium text-apple-text">{item.name}</p>
-                          <p className="text-apple-subtext text-[11px]">{formatRD(item.price)} c/u</p>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          <div className="flex items-center bg-white border border-apple-border rounded-full p-0.5 space-x-1.5 shadow-xs">
-                            <button 
-                              type="button"
-                              onClick={() => updateQuantity(item.id, -1)} 
-                              className="w-6 h-6 rounded-full bg-apple-card text-apple-text font-bold flex items-center justify-center text-xs active:scale-90"
-                            >
-                              −
-                            </button>
-                            <span className="text-xs font-semibold px-1 min-w-[14px] text-center">{item.quantity}</span>
-                            <button 
-                              type="button"
-                              onClick={() => updateQuantity(item.id, 1)} 
-                              className="w-6 h-6 rounded-full bg-apple-card text-apple-text font-bold flex items-center justify-center text-xs active:scale-90"
-                            >
-                              +
-                            </button>
-                          </div>
-                          <span className="font-semibold text-apple-text min-w-[65px] text-right">{formatRD(item.total)}</span>
+                {/* Resumen de Postres en Carrito */}
+                <div className="divide-y divide-brand-border/60">
+                  {cartItems.map(it => (
+                    <div key={it.product.id} className="py-2.5 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="font-bold text-brand-charcoal">{it.product.name}</span>
+                        <span className="text-gray-400 block text-[11px]">{it.quantity} x {formatRD(it.product.price)}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-extrabold text-brand-charcoal">{formatRD(it.product.price * it.quantity)}</span>
+                        <div className="flex items-center space-x-1 bg-brand-softBg border border-brand-border rounded-lg p-0.5">
+                          <button onClick={() => updateQuantity(it.product.id, -1)} className="w-5 h-5 bg-white rounded text-xs font-bold">-</button>
+                          <span className="text-[11px] font-bold px-1">{it.quantity}</span>
+                          <button onClick={() => updateQuantity(it.product.id, 1)} className="w-5 h-5 bg-brand-pink text-white rounded text-xs font-bold">+</button>
                         </div>
                       </div>
-                    ))}
+                    </div>
+                  ))}
+                  <div className="pt-2 flex justify-between items-baseline font-black text-sm text-brand-charcoal">
+                    <span>Total Estimado:</span>
+                    <span className="text-base text-brand-darkPink">{formatRD(cartSubtotal)}</span>
                   </div>
-
-                  <div className="pt-2 border-t border-apple-border/60 flex justify-between font-semibold text-apple-text text-sm">
-                    <span>Total a Pagar (100%):</span>
-                    <span className="text-apple-pink text-base">{formatRD(cartTotal)}</span>
-                  </div>
-                  <p className="text-[10.5px] text-apple-subtext pt-0.5">
-                    * El pago completo del 100% se realiza tras confirmar disponibilidad. Cuentas con 3 horas para transferir y fijar tu pedido.
-                  </p>
                 </div>
 
-                <form onSubmit={handlePlaceOrder} className="space-y-3.5">
-                  <div>
-                    <label className="text-xs text-apple-subtext block mb-1 font-medium">Nombre completo</label>
-                    <input 
-                      required
-                      type="text" 
-                      placeholder="Tu nombre y apellido" 
-                      value={customerData.name}
-                      onChange={e => setCustomerData({ ...customerData, name: e.target.value })}
-                      className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-2.5 text-sm text-apple-text outline-none focus:border-apple-text transition-colors"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
+                {/* Formulario de Entrega & Contacto */}
+                <form onSubmit={handleSubmitOrder} className="space-y-3 pt-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-xs text-apple-subtext block mb-1 font-medium">WhatsApp (Auto-formato)</label>
-                      <input 
+                      <label className="text-[11px] font-semibold text-gray-500 block mb-1">Tu Nombre *</label>
+                      <input
+                        type="text"
                         required
-                        type="tel" 
-                        maxLength="12"
-                        placeholder="809-000-0000" 
-                        value={customerData.phone}
-                        onChange={e => setCustomerData({ ...customerData, phone: formatPhoneInput(e.target.value) })}
-                        className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-2.5 text-sm text-apple-text outline-none focus:border-apple-text transition-colors font-medium"
+                        placeholder="Ej. Laura Gómez"
+                        value={customerName}
+                        onChange={e => setCustomerName(e.target.value)}
+                        className="w-full bg-brand-softBg border border-brand-border rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:border-brand-pink"
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-apple-subtext block mb-1 font-medium">
-                        Fecha de Entrega
-                      </label>
-                      <input 
+                      <label className="text-[11px] font-semibold text-gray-500 block mb-1">WhatsApp *</label>
+                      <input
+                        type="tel"
                         required
+                        placeholder="809-000-0000"
+                        value={customerPhone}
+                        onChange={e => setCustomerPhone(e.target.value)}
+                        className="w-full bg-brand-softBg border border-brand-border rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:border-brand-pink"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Modalidad de Entrega */}
+                  <div>
+                    <label className="text-[11px] font-semibold text-gray-500 block mb-1">Tipo de Entrega</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryType("Pickup")}
+                        className={`py-2 text-xs font-bold rounded-xl border transition-all ${
+                          deliveryType === "Pickup"
+                            ? "bg-brand-charcoal text-white border-brand-charcoal"
+                            : "bg-brand-softBg text-gray-600 border-brand-border"
+                        }`}
+                      >
+                        🚗 Retiro (SDE)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryType("Delivery")}
+                        className={`py-2 text-xs font-bold rounded-xl border transition-all ${
+                          deliveryType === "Delivery"
+                            ? "bg-brand-charcoal text-white border-brand-charcoal"
+                            : "bg-brand-softBg text-gray-600 border-brand-border"
+                        }`}
+                      >
+                        🛵 Envío a Domicilio
+                      </button>
+                    </div>
+                  </div>
+
+                  {deliveryType === "Delivery" && (
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-500 block mb-1">Dirección de Entrega</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Sector, calle, número de casa/apto"
+                        value={deliveryAddress}
+                        onChange={e => setDeliveryAddress(e.target.value)}
+                        className="w-full bg-brand-softBg border border-brand-border rounded-xl px-3 py-2 text-xs outline-none focus:border-brand-pink"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-500 block mb-1">Fecha de Entrega *</label>
+                      <input
                         type="date"
-                        min={minDateAllowed}
-                        value={customerData.deliveryDate}
-                        onChange={e => setCustomerData({ ...customerData, deliveryDate: e.target.value })}
-                        className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-2.5 text-sm text-apple-text outline-none focus:border-apple-text transition-colors"
+                        required
+                        value={deliveryDate}
+                        onChange={e => setDeliveryDate(e.target.value)}
+                        className="w-full bg-brand-softBg border border-brand-border rounded-xl px-3 py-2 text-xs outline-none focus:border-brand-pink"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-500 block mb-1">Hora Estimada</label>
+                      <input
+                        type="time"
+                        value={deliveryTime}
+                        onChange={e => setDeliveryTime(e.target.value)}
+                        className="w-full bg-brand-softBg border border-brand-border rounded-xl px-3 py-2 text-xs outline-none focus:border-brand-pink"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-xs text-apple-subtext block mb-1 font-medium">Dedicatoria o notas (opcional)</label>
-                    <input 
-                      type="text" 
-                      placeholder="Ej. 'Felicidades Mamá' / Envío a Piantini" 
-                      value={customerData.notes}
-                      onChange={e => setCustomerData({ ...customerData, notes: e.target.value })}
-                      className="w-full bg-apple-card border border-apple-border rounded-xl px-3.5 py-2.5 text-sm text-apple-text outline-none focus:border-apple-text transition-colors"
-                    />
+                    <label className="text-[11px] font-semibold text-gray-500 block mb-1">Nota Especial / Dedicatoria</label>
+                    <textarea
+                      rows="2"
+                      placeholder="Ej. Escribir 'Felicidades Mamá', lazo de color especial..."
+                      value={specialNotes}
+                      onChange={e => setSpecialNotes(e.target.value)}
+                      className="w-full bg-brand-softBg border border-brand-border rounded-xl px-3 py-2 text-xs outline-none focus:border-brand-pink"
+                    ></textarea>
                   </div>
 
-                  <button 
+                  <button
                     type="submit"
-                    disabled={isSending || cartItems.length === 0}
-                    className="w-full bg-[#1D1D1F] hover:bg-black text-white font-medium py-3.5 rounded-2xl shadow-lg text-sm tracking-tight transition-all active:scale-[0.99] disabled:opacity-50 pt-3"
+                    disabled={isSubmitting}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl shadow-lg active:scale-[0.99] transition-all flex items-center justify-center space-x-2 text-sm"
                   >
-                    {isSending ? "Registrando orden..." : "Solicitar Pedido por WhatsApp"}
+                    <span>💬</span>
+                    <span>{isSubmitting ? "Procesando..." : "Confirmar por WhatsApp"}</span>
                   </button>
                 </form>
 
@@ -599,27 +528,37 @@
             </div>
           )}
 
-          {/* Lightbox Modal */}
-          {viewingImage && (
-            <div 
-              onClick={() => setViewingImage(null)}
-              className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 animate-in fade-in duration-200"
-            >
-              <div className="relative max-w-sm w-full bg-white rounded-3xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
-                <img 
-                  src={viewingImage.src} 
-                  alt={viewingImage.title} 
-                  className="w-full h-80 object-cover"
-                />
-                <div className="p-4 flex justify-between items-center bg-white">
-                  <span className="font-semibold text-sm text-apple-text">{viewingImage.title}</span>
-                  <button 
-                    onClick={() => setViewingImage(null)}
-                    className="w-8 h-8 rounded-full bg-apple-card text-apple-text text-xs font-bold flex items-center justify-center"
-                  >
-                    ✕
-                  </button>
+          {/* PANTALLA FINAL: CONFIRMACIÓN Y BOTÓN WHATSAPP */}
+          {orderSubmitted && (
+            <div className="fixed inset-0 z-50 bg-brand-softBg flex items-center justify-center p-5">
+              <div className="bg-white w-full max-w-md p-6 rounded-3xl border border-brand-border text-center space-y-4 shadow-xl animate-in zoom-in-95 duration-200">
+                <div className="w-16 h-16 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-3xl">
+                  ✓
                 </div>
+                <h2 className="text-xl font-black text-brand-charcoal">¡Pedido Casi Listo!</h2>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Para apartar tu fecha y coordinar el pago, pulsa el botón abajo para enviar el detalle de tu orden directamente a nuestro WhatsApp oficial:
+                </p>
+
+                <a
+                  href={whatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-4 rounded-2xl shadow-lg flex items-center justify-center space-x-2 text-sm transition-all block"
+                >
+                  <span>📲 Abrir WhatsApp con LeRoss Bakery</span>
+                </a>
+
+                <button
+                  onClick={() => {
+                    setOrderSubmitted(false);
+                    setIsCartOpen(false);
+                    setCart({});
+                  }}
+                  className="text-xs text-gray-400 font-semibold hover:text-brand-charcoal pt-2"
+                >
+                  Volver al menú principal
+                </button>
               </div>
             </div>
           )}
@@ -628,7 +567,7 @@
       );
     }
 
-    ReactDOM.createRoot(document.getElementById("root")).render(<CustomerApp />);
+    ReactDOM.createRoot(document.getElementById("root")).render(<MenuApp />);
   </script>
 </body>
 </html>
